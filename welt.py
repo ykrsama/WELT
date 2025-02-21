@@ -61,17 +61,20 @@ class Pipe:
             default="DSimu, DAna",
             description="ID of knowledge collections, seperate by comma",
         )
-        EMBEDDING_BATCH_SIZE: int = (
-            Field(
+        EMBEDDING_BATCH_SIZE: int = Field(
                 default=2000,
                 description="Batch size for knowledge search",
-            ),
         )
         GOOGLE_PSE_API_KEY: str = Field(default="")
         GOOGLE_PSE_ENGINE_ID: str = Field(default="")
         MAX_LOOP: int = Field(default=20, description="Prevent dead loop")
-        CODE_INTERPRETER_PROMPT: str = Field(
-            default="""**Code Interpreter**:
+
+    def __init__(self):
+        # Configs
+        self.valves = self.Valves()
+        self.data_prefix = "data:"
+        self.max_loop = self.valves.MAX_LOOP  # Save money
+        self.CODE_INTERPRETER_PROMPT: str = """**Code Interpreter**:
    <code_interpreter type="code" lang="python">
    codes
    </code_interpreter>
@@ -84,9 +87,7 @@ class Pipe:
    - **If a path to an image, audio, or any file is provided in markdown format in the output, ALWAYS regurgitate word for word, explicitly display it as part of the response to ensure the user can access it easily, do NOT change it.**
    - Code for test is important. For potentially time-comsuming code, e.g. loading file with unknown size, use argument to control the running scale, and defaulty run on small scale test.
 """
-        )
-        WEB_SEARCH_PROMPT: str = Field(
-            default="""**Web Search**: `<web_search url="www.googleapis.com">single query</web_search>`
+        self.WEB_SEARCH_PROMPT: str = """**Web Search**: `<web_search url="www.googleapis.com">single query</web_search>`
    - You have access to web search, and no need to bother API keys because user can handle by themselves in this tool.
    - To use it, **you must enclose your search queries within** `<web_search url="www.googleapis.com">`, `</web_search>` **XML tags** and stop responding right away without further assumption of what will be done. Do NOT use triple backticks.
    - Err on the side of suggesting search queries if there is **any chance** they might provide useful or updated information.
@@ -99,9 +100,7 @@ class Pipe:
    - If no valid search result, maybe causing by network issue, please retry.
    - **The date today is: {{CURRENT_DATE}}**. So you can search for web to get information up do date {{CURRENT_DATE}}.
 """
-        )
-        KNOWLEDGE_SEARCH_PROMPT: str = Field(
-            default="""**Knowledge Search**: `<knowledge_search collection="DSimu">single query</knowledge_search>`
+        self.KNOWLEDGE_SEARCH_PROMPT: str = """**Knowledge Search**: `<knowledge_search collection="DSimu">single query</knowledge_search>`
    - You have access to user's local and personal kowledge collections.
    - To use it, **you must enclose your search queries within** `<knowledge_search collection="DSimu">`, `</knowledge_search>` **XML tags** and stop responding right away without further assumption of what will be done. Do NOT use triple backticks.
    - Err on the side of suggesting search queries if there is **any chance** they might provide useful or related information.
@@ -111,9 +110,7 @@ class Pipe:
      - DSimu: source codes of simulation program based on Geant4 and ROOT, characterized by detector of DarkSHINE experiment.
      - DAna: source codes of software framework for the DarkSHINE analysis and reconstruction tools.
 """
-        )
-        GUIDE_PROMPT: str = Field(
-            default="""#### Task:
+        self.GUIDE_PROMPT: str = """#### Task:
 
 - Analyze the chat history to determine the necessity of using tools. Available Tools: Code Interpreter, Web Search, or Knowledge Search.
 
@@ -126,29 +123,24 @@ class Pipe:
 - If tool using returns no helping information, modify the usage of tool and use it again.
 - All responses should be communicated in the chat's primary language, ensuring seamless understanding. If the chat is multilingual, default to English for clarity.
 """
-        )
 
-    def __init__(self):
-        # Configs
-        self.valves = self.Valves()
-        self.data_prefix = "data:"
-        self.max_loop = self.valves.MAX_LOOP  # Save money
+
         self.TOOL = {}
         self.prompt_templates = {}
         self.replace_tags = {}
         if self.valves.USE_CODE_INTERPRETER:
             self.TOOL["code_interpreter"] = self._code_interpreter
             self.prompt_templates["code_interpreter"] = (
-                self.valves.CODE_INTERPRETER_PROMPT
+                self.CODE_INTERPRETER_PROMPT
             )
         if self.valves.USE_WEB_SEARCH:
             self.TOOL["web_search"] = self._web_search
-            self.prompt_templates["web_search"] = self.valves.WEB_SEARCH_PROMPT
+            self.prompt_templates["web_search"] = self.WEB_SEARCH_PROMPT
             self.replace_tags["web_search"] = "Searching"
         if self.valves.USE_KNOWLEDGE_SEARCH:
             self.TOOL["knowledge_search"] = self._knowledge_search
             self.prompt_templates["knowledge_search"] = (
-                self.valves.KNOWLEDGE_SEARCH_PROMPT
+                self.KNOWLEDGE_SEARCH_PROMPT
             )
             self.replace_tags["knowledge_search"] = "Searching"
         # Global vars
@@ -649,7 +641,7 @@ class Pipe:
         template_string = """#### Available Tools"""
         for i, (name, prompt) in enumerate(self.prompt_templates.items()):
             template_string += f"{i+1}. {prompt}\n"
-        template_string += self.valves.GUIDE_PROMPT
+        template_string += self.GUIDE_PROMPT
         # Create a Jinja2 Template object
         template = Template(template_string)
 
