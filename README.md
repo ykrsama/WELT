@@ -1,4 +1,4 @@
-# WELT (Workflow Enhanced LLM with CoT)
+# WELT: Workflow Enhanced LLM with CoT
 
 For specific task, specific but optimized workflow generally performs better than a generalized workflow.
 
