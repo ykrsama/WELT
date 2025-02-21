@@ -456,7 +456,7 @@ class Pipe:
                         else:
                             return f"\n<details type=\"user_proxy\">\n<summary>No results found on Google.</summary>\n</details>\n"
                     else:
-                        return f"\n<details type=\"user_proxy\">\n<summary>Google search failed with status code: {response.status_code}</summary>\n</details>\n"
+                        return f"\n<details type=\"user_proxy\">\n<summary>Google search failed with status code {response.status_code}</summary>\n</details>\n"
             except Exception as e:
                 return f"\n<details type=\"user_proxy\">\n<summary>Error during Google search</summary>\n{str(e)}\n</details>\n"
 
@@ -501,7 +501,7 @@ class Pipe:
                         else:
                             return f"\n<details type=\"user_proxy\">\n<summary>No results found on ArXiv.</summary>\n</details>\n"
                     else:
-                        return f"\n<details type=\"user_proxy\">\n<summary>ArXiv search failed with status code: {response.status_code}</summary>\n</details>\n"
+                        return f"\n<details type=\"user_proxy\">\n<summary>ArXiv search failed with status code {response.status_code}</summary>\n</details>\n"
             except Exception as e:
                 return f"\n<details type=\"user_proxy\">\n<summary>Error during ArXiv search</summary>\n{str(e)}\n</details>\n"
 
