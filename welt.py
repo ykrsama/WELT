@@ -41,12 +41,14 @@ from open_webui.models.knowledge import (
 log = logging.getLogger(__name__)
 log.setLevel("DEBUG")
 
+
 class ResultObject:
     def __init__(self, id, distance, document, metadata):
         self.id = id
         self.distance = distance
         self.document = document
         self.metadata = metadata
+
 
 class Pipe:
     class Valves(BaseModel):
@@ -69,8 +71,8 @@ class Pipe:
             description="ID of knowledge collections, seperate by comma",
         )
         EMBEDDING_BATCH_SIZE: int = Field(
-                default=2000,
-                description="Batch size for knowledge search",
+            default=2000,
+            description="Batch size for knowledge search",
         )
         GOOGLE_PSE_API_KEY: str = Field(default="")
         GOOGLE_PSE_ENGINE_ID: str = Field(default="")
@@ -135,24 +137,19 @@ class Pipe:
 - All responses should be communicated in the chat's primary language, ensuring seamless understanding. If the chat is multilingual, default to English for clarity.
 """
 
-
         self.TOOL = {}
         self.prompt_templates = {}
         self.replace_tags = {}
         if self.valves.USE_CODE_INTERPRETER:
             self.TOOL["code_interpreter"] = self._code_interpreter
-            self.prompt_templates["code_interpreter"] = (
-                self.CODE_INTERPRETER_PROMPT
-            )
+            self.prompt_templates["code_interpreter"] = self.CODE_INTERPRETER_PROMPT
         if self.valves.USE_WEB_SEARCH:
             self.TOOL["web_search"] = self._web_search
             self.prompt_templates["web_search"] = self.WEB_SEARCH_PROMPT
             self.replace_tags["web_search"] = "Querying"
         if self.valves.USE_KNOWLEDGE_SEARCH:
             self.TOOL["knowledge_search"] = self._knowledge_search
-            self.prompt_templates["knowledge_search"] = (
-                self.KNOWLEDGE_SEARCH_PROMPT
-            )
+            self.prompt_templates["knowledge_search"] = self.KNOWLEDGE_SEARCH_PROMPT
             self.replace_tags["knowledge_search"] = "Querying"
         # Global vars
         self.emitter = None
@@ -167,18 +164,24 @@ class Pipe:
         log.debug("Initializing knowledge bases")
         self.knowledges = {}  # 初始化知识库字典
         try:
-            knowledge_bases = Knowledges.get_knowledge_bases()  # 获取所有知识库 # FIXME: 暂时只适用于admin.对于user需要获取uuid...
-            
+            knowledge_bases = (
+                Knowledges.get_knowledge_bases()
+            )  # 获取所有知识库 # FIXME: 暂时只适用于admin.对于user需要获取uuid...
+
             # 遍历知识库列表
             for knowledge in knowledge_bases:
                 knowledge_name = knowledge.name  # 获取知识库名称
                 if knowledge_name:  # 确保知识库名称存在
                     log.debug(f"Adding knowledge base: {knowledge_name}")
-                    self.knowledges[knowledge_name] = knowledge  # 将知识库信息存储到字典中
+                    self.knowledges[knowledge_name] = (
+                        knowledge  # 将知识库信息存储到字典中
+                    )
                 else:
                     log.warning("Found a knowledge base without a name, skipping it.")
-            
-            log.info(f"Initialized {len(self.knowledges)} knowledge bases: {list(self.knowledges.keys())}")
+
+            log.info(
+                f"Initialized {len(self.knowledges)} knowledge bases: {list(self.knowledges.keys())}"
+            )
         except Exception as e:
             log.debug(f"Error initializing knowledge: {e}")
 
@@ -296,7 +299,7 @@ class Pipe:
                                         }
                                     )
                                     self.total_response = ""
-                                    #yield "\n<details type=\"user_proxy\">\n<summary>Results</summary>\n"
+                                    # yield "\n<details type=\"user_proxy\">\n<summary>Results</summary>\n"
                                     # Call tools
                                     for tool in tools:
                                         reply = await self.TOOL[tool["name"]](
@@ -311,7 +314,7 @@ class Pipe:
                                             "content": user_proxy_reply,
                                         }
                                     )
-                                    #yield "\n</details>\n"
+                                    # yield "\n</details>\n"
                                 else:
                                     do_pull = False
                                 break
@@ -350,7 +353,6 @@ class Pipe:
                                         yield res
                                 else:
                                     yield content
-
 
                 count += 1
         except Exception as e:
@@ -391,7 +393,10 @@ class Pipe:
         if "<" in self.temp_content:
             # Conver tool calling tags into content (Except code_interpreter, let openwebui to handle)
             if len(self.temp_content) > 20:
-                if "<web_search" in self.temp_content or "<knowledge_search" in self.temp_content:
+                if (
+                    "<web_search" in self.temp_content
+                    or "<knowledge_search" in self.temp_content
+                ):
                     pattern = re.compile(
                         r"<(web_search|knowledge_search)\s*([^>]*)>(.*?)</\1>",
                         re.DOTALL,
@@ -404,7 +409,7 @@ class Pipe:
                         attributes_str = match[1]
                         tag_content = match[2].strip()
                         summary = self.replace_tags[tag_name] + " " + attributes_str
-                        res += f"\n<details type=\"{tag_name}\">\n<summary>{summary}</summary>\n{tag_content}\n</details>"
+                        res += f'\n<details type="{tag_name}">\n<summary>{summary}</summary>\n{tag_content}\n</details>'
                         self.temp_content = re.sub(pattern, "", self.temp_content)
                         if self.temp_content:
                             res += self.temp_content
@@ -442,7 +447,7 @@ class Pipe:
         search_query = content.strip()
 
         if not search_query:
-            return f"\n<details type=\"user_proxy\">\n<summary>Error. No search query provided.</summary>\n</details>\n"
+            return f'\n<details type="user_proxy">\n<summary>Error. No search query provided.</summary>\n</details>\n'
 
         url = attributes["url"]
 
@@ -471,16 +476,16 @@ class Pipe:
                             search_results.append(f"**{title}**\n{snippet}\n{link}\n")
 
                         if search_results:
-                            result = f"\n<details type=\"user_proxy\">\n<summary>Searched {len(urls)} sites</summary>\n"
+                            result = f'\n<details type="user_proxy">\n<summary>Searched {len(urls)} sites</summary>\n'
                             result += "\n\n".join(search_results)
                             result += "\n</details>\n"
                             return result
                         else:
-                            return f"\n<details type=\"user_proxy\">\n<summary>No results found on Google.</summary>\n</details>\n"
+                            return f'\n<details type="user_proxy">\n<summary>No results found on Google.</summary>\n</details>\n'
                     else:
-                        return f"\n<details type=\"user_proxy\">\n<summary>Google search failed with status code {response.status_code}</summary>\n</details>\n"
+                        return f'\n<details type="user_proxy">\n<summary>Google search failed with status code {response.status_code}</summary>\n</details>\n'
             except Exception as e:
-                return f"\n<details type=\"user_proxy\">\n<summary>Error during Google search</summary>\n{str(e)}\n</details>\n"
+                return f'\n<details type="user_proxy">\n<summary>Error during Google search</summary>\n{str(e)}\n</details>\n'
 
         # Handle ArXiv search
         if url == "arxiv.org" and search_query:
@@ -516,18 +521,18 @@ class Pipe:
                                 arxiv_results.append("Error parsing ArXiv entry.")
 
                         if arxiv_results:
-                            result = f"\n<details type=\"user_proxy\">\n<summary>Searched {len(urls)} papers</summary>\n"
+                            result = f'\n<details type="user_proxy">\n<summary>Searched {len(urls)} papers</summary>\n'
                             result += "\n\n".join(arxiv_results)
                             result += "\n</details>\n"
                             return result
                         else:
-                            return f"\n<details type=\"user_proxy\">\n<summary>No results found on ArXiv.</summary>\n</details>\n"
+                            return f'\n<details type="user_proxy">\n<summary>No results found on ArXiv.</summary>\n</details>\n'
                     else:
-                        return f"\n<details type=\"user_proxy\">\n<summary>ArXiv search failed with status code {response.status_code}</summary>\n</details>\n"
+                        return f'\n<details type="user_proxy">\n<summary>ArXiv search failed with status code {response.status_code}</summary>\n</details>\n'
             except Exception as e:
-                return f"\n<details type=\"user_proxy\">\n<summary>Error during ArXiv search</summary>\n{str(e)}\n</details>\n"
+                return f'\n<details type="user_proxy">\n<summary>Error during ArXiv search</summary>\n{str(e)}\n</details>\n'
 
-        return f"\n<details type=\"user_proxy\">\n<summary>Invalid search source or query.</summary>\n</details>\n"
+        return f'\n<details type="user_proxy">\n<summary>Invalid search source or query.</summary>\n</details>\n'
 
     async def _code_interpreter(self, attributes: dict, content: str) -> str:
         return "done"
@@ -558,11 +563,13 @@ class Pipe:
         log.debug("Searching VECTOR_DB_CLIENT")
         knowledge = self.knowledges.get(knowledge_name, [])
         if not knowledge:
-            raise ValueError(f"No knowledge name {knowledge_name} found in knowledge base. Availables knowledges: {vars(self.knowledges.keys())}")
+            raise ValueError(
+                f"No knowledge name {knowledge_name} found in knowledge base. Availables knowledges: {vars(self.knowledges.keys())}"
+            )
 
         file_ids = knowledge.data["file_ids"]
         all_results = []
-    
+
         for file_id in file_ids:
             file_name = "file-" + file_id
             result = VECTOR_DB_CLIENT.search(
@@ -574,11 +581,18 @@ class Pipe:
             if not result or not hasattr(result, "ids") or not result.ids:
                 continue
 
-            if not all(hasattr(result, attr) for attr in ["ids", "distances", "documents", "metadatas"]):
+            if not all(
+                hasattr(result, attr)
+                for attr in ["ids", "distances", "documents", "metadatas"]
+            ):
                 continue
-    
+
             for i in range(len(result.ids)):
-                if (not result.ids[i] or not result.documents[i] or not result.metadatas[i]):
+                if (
+                    not result.ids[i]
+                    or not result.documents[i]
+                    or not result.metadatas[i]
+                ):
                     continue
                 result_object = ResultObject(
                     id=result.ids[i],
@@ -587,11 +601,11 @@ class Pipe:
                     metadata=result.metadatas[i],
                 )
                 all_results.append(result_object)
-    
+
         # Sort all results by distance and select the top_k
         all_results.sort(key=lambda x: x.distance)
         top_results = all_results[:top_k]
-    
+
         return top_results
 
     async def _knowledge_search(self, attributes: dict, content: str) -> str:
@@ -608,7 +622,7 @@ class Pipe:
         """
         collection = attributes.get("collection", "")
         if not collection:
-            return f"\n<details type=\"user_proxy\">\n<summary>Error. No knowledge search collection specified.</summary>\n</details>\n"
+            return f'\n<details type="user_proxy">\n<summary>Error. No knowledge search collection specified.</summary>\n</details>\n'
 
         # Check if the knowledge base is available in the configured ones
         available_knowledge_cols = [
@@ -633,18 +647,18 @@ class Pipe:
                 if not isinstance(result.document, list) or not result.document:
                     continue
                 metadata = result.metadata
-                source = result.metadata[0]['source']
+                source = result.metadata[0]["source"]
                 document = result.document[0]
-                
+
                 formatted_results.append(
                     f"**Source**: {source}\n**Context**:\n```\n{document}\n```"
                 )
-            reply = f"\n<details type=\"user_proxy\">\n<summary>Found {len(results)} results.</summary>\n"
+            reply = f'\n<details type="user_proxy">\n<summary>Found {len(results)} results.</summary>\n'
             reply += "\n\n".join(formatted_results)
             reply += "\n</details>\n"
             return reply
         except Exception as e:
-            return f"\n<details type=\"user_proxy\">\n<summary>Error during Knowledge Search processing</summary>\n{str(e)}\n</details>\n"
+            return f'\n<details type="user_proxy">\n<summary>Error during Knowledge Search processing</summary>\n{str(e)}\n</details>\n'
 
     def _find_tool_usage(self, content):
         tools = []
