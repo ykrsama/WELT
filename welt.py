@@ -12,6 +12,7 @@ import json
 import httpx
 import re
 import requests
+import time
 from typing import AsyncGenerator, Callable, Awaitable, Optional, List
 from pydantic import BaseModel, Field
 import asyncio
@@ -101,12 +102,12 @@ class Pipe:
       - Prefer arguments with default value than hard coded
       - For potentially time-comsuming code, e.g. loading file with unknown size, use argument to control the running scale, and defaulty run on small scale test.
 """
-        self.WEB_SEARCH_PROMPT: str = """**Web Search**: `<web_search url="www.googleapis.com">query keyword</web_search>`
+        self.WEB_SEARCH_PROMPT: str = """**Web Search**: `<web_search url="www.googleapis.com">one query</web_search>`
    - You have access to web search, and no need to bother API keys because user can handle by themselves in this tool.
    - To use it, **you must enclose your search query within** `<web_search url="www.googleapis.com">`, `</web_search>` **XML tags** and stop responding right away without further assumption of what will be done. Do NOT use triple backticks.
    - Err on the side of suggesting search queries if there is **any chance** they might provide useful or updated information.
    - Always prioritize providing actionable and broad query that maximize informational coverage.
-   - In each web_search XML tag, be concise and focused on composing high-quality search query, few keywords are good, **avoiding unnecessary elaboration, commentary, or assumptions**.
+   - In each web_search XML tag, be concise and focused on composing high-quality search query, **avoiding unnecessary elaboration, commentary, or assumptions**.
    - You can use multiple lines of web_search XML tag to do parallel search.
    - Available urls:
      - www.googleapis.com: for general search.
@@ -114,10 +115,10 @@ class Pipe:
    - If no valid search result, maybe causing by network issue, please retry.
    - **The date today is: {{CURRENT_DATE}}**. So you can search for web to get information up do date {{CURRENT_DATE}}.
 """
-        self.KNOWLEDGE_SEARCH_PROMPT: str = """**Knowledge Search**: `<knowledge_search collection="DarkSHINE_Simulation_Software">query keyowrds</knowledge_search>`
+        self.KNOWLEDGE_SEARCH_PROMPT: str = """**Knowledge Search**: `<knowledge_search collection="DarkSHINE_Simulation_Software">one query</knowledge_search>`
    - You have access to user's local and personal kowledge collections.
    - To use it, **you must enclose your search query within** `<knowledge_search collection="DarkSHINE_Simulation_Software">`, `</knowledge_search>` **XML tags** and stop responding right away without further assumption of what will be done. Do NOT use triple backticks.
-   - In each knowledge_search XML tag, be concise and focused on composing high-quality search query, few keywordds are good, **avoiding unnecessary elaboration, commentary, or assumptions**.
+   - In each knowledge_search XML tag, be concise and focused on composing high-quality search query, **avoiding unnecessary elaboration, commentary, or assumptions**.
    - **Only use one knowledge_search XML tags, only one query at one time.** Do not use multiple queries, this will cause error.
    - Available collections:
      - DarkSHINE_Simulation_Software: Source code of simulation program based on Geant4 and ROOT, characterized by detector of DarkSHINE experiment. **Must use English to query this collection**.
@@ -301,11 +302,19 @@ class Pipe:
                                     self.total_response = ""
                                     # Call tools
                                     for tool in tools:
-                                        reply = await self.TOOL[tool["name"]](
-                                            tool["attributes"], tool["content"]
-                                        )
-                                        user_proxy_reply += reply
-                                        yield reply
+                                        if tool["name"] == "knowledge_search": 
+                                            reply = self.TOOL[tool["name"]](
+                                                tool["attributes"], tool["content"]
+                                            )
+                                            user_proxy_reply += reply
+                                            yield reply
+                                    else:
+
+                                            reply = await self.TOOL[tool["name"]](
+                                                tool["attributes"], tool["content"]
+                                            )
+                                            user_proxy_reply += reply
+                                            yield reply
 
                                     messages.append(
                                         {
@@ -561,7 +570,7 @@ class Pipe:
             print(e)
             return None
 
-    async def _query_collection(
+    def _query_collection(
         self, knowledge_name: str, query_keywords: str, top_k: int = 3
     ) -> list:
         """
@@ -583,14 +592,15 @@ class Pipe:
             try:
                 embeddings = self._generate_openai_batch_embeddings(
                     model="BAAI/bge-m3",
-                    texts=query_keywords,
+                    texts=[query_keywords],
                     url=self.valves.DEEPSEEK_API_BASE_URL,
                     key=self.valves.DEEPSEEK_API_KEY,
                 )
+                embeddings = embeddings[0]
                 break
             except Exception as e:
                 log.error(f"Generating Embeddings attempt {i + 1} failed: {e}")
-                await asyncio.sleep(2)
+                time.sleep(2)
         if not embeddings:
             raise ValueError(f"Faild generating embeddings, could be a network fluctuation.")
         log.debug(f"Embeddings length: {len(embeddings)}")
@@ -644,7 +654,7 @@ class Pipe:
 
         return top_results
 
-    async def _knowledge_search(self, attributes: dict, content: str) -> str:
+    def _knowledge_search(self, attributes: dict, content: str) -> str:
         """
         Retrieve relevant information from a knowledge collection
         based on the provided query, and return the results.
@@ -670,7 +680,7 @@ class Pipe:
 
         # Retrieve relevant documents from the knowledge base
         try:
-            results = await self._query_collection(collection, content)
+            results = self._query_collection(collection, content)
 
             if not results:
                 return f"\n<details type=\"user_proxy\">\n<summary>Found nothing with query {content}.</summary>\n</details>\n"
