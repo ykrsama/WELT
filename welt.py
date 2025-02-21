@@ -120,7 +120,7 @@ class Pipe:
    - In each knowledge_search XML tag, be concise and focused on composing high-quality search queries, avoiding unnecessary elaboration, commentary, or assumptions.
    - You can use multiple lines of knowledge_search XML tag to do parallel search.
    - Available collections:
-     - DarkSHINE_Simulation_Software: Source code of simulation program based on Geant4 and ROOT, characterized by detector of DarkSHINE experiment.
+     - DarkSHINE_Simulation_Software: Source code of simulation program based on Geant4 and ROOT, characterized by detector of DarkSHINE experiment. Use English to search this collection.
 """
         self.GUIDE_PROMPT: str = """#### Task:
 
@@ -537,7 +537,7 @@ class Pipe:
     async def _code_interpreter(self, attributes: dict, content: str) -> str:
         return "done"
 
-    def _query_collection(
+    async def _query_collection(
         self, knowledge_name: str, query_keywords: str, top_k: int = 3
     ) -> list:
         """
@@ -591,7 +591,7 @@ class Pipe:
                 not result.ids
                 or not result.distances
                 or not result.documents
-                or not reesult.metadatas
+                or not result.metadatas
             ):
                 continue
 
@@ -635,7 +635,7 @@ class Pipe:
 
         # Retrieve relevant documents from the knowledge base
         try:
-            results = self._query_collection(collection, content)
+            results = await self._query_collection(collection, content)
             if not results:
                 return f"\n<details type=\"user_proxy\">\n<summary>Found nothing in the collection '{collection}'.</summary>\n</details>\n"
 
@@ -650,9 +650,10 @@ class Pipe:
                     continue
                 source = result.metadata[0]["source"]
                 document = result.document[0]
+                document = "\n".join(["> " + line for line in document.splitlines()])               
 
                 formatted_results.append(
-                    f"**Source**: {source}\n**Context**:\n```\n{document}\n```"
+                    f"\n**Source**: {source}\n\n**Context**:\n\n{document}\n"
                 )
             reply = f'\n<details type="user_proxy">\n<summary>Found {len(results)} results.</summary>\n'
             reply += "\n\n".join(formatted_results)
