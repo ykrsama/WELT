@@ -67,7 +67,7 @@ class Pipe:
         USE_WEB_SEARCH: bool = Field(default=True)
         USE_KNOWLEDGE_SEARCH: bool = Field(default=True)
         KNOWLEDGE_COLLECTIONS: str = Field(
-            default="DarkSHINE Simulation Software",
+            default="DarkSHINE_Simulation_Software",
             description="ID of knowledge collections, seperate by comma",
         )
         EMBEDDING_BATCH_SIZE: int = Field(
@@ -113,14 +113,14 @@ class Pipe:
    - If no valid search result, maybe causing by network issue, please retry.
    - **The date today is: {{CURRENT_DATE}}**. So you can search for web to get information up do date {{CURRENT_DATE}}.
 """
-        self.KNOWLEDGE_SEARCH_PROMPT: str = """**Knowledge Search**: `<knowledge_search collection="DarkSHINE Simulation Software">single query</knowledge_search>`
+        self.KNOWLEDGE_SEARCH_PROMPT: str = """**Knowledge Search**: `<knowledge_search collection="DarkSHINE_Simulation_Software">single query</knowledge_search>`
    - You have access to user's local and personal kowledge collections.
-   - To use it, **you must enclose your search queries within** `<knowledge_search collection="DarkSHINE Simulation Software">`, `</knowledge_search>` **XML tags** and stop responding right away without further assumption of what will be done. Do NOT use triple backticks.
+   - To use it, **you must enclose your search queries within** `<knowledge_search collection="DarkSHINE_Simulation_Software">`, `</knowledge_search>` **XML tags** and stop responding right away without further assumption of what will be done. Do NOT use triple backticks.
    - Err on the side of suggesting search queries if there is **any chance** they might provide useful or related information.
    - In each knowledge_search XML tag, be concise and focused on composing high-quality search queries, avoiding unnecessary elaboration, commentary, or assumptions.
    - You can use multiple lines of knowledge_search XML tag to do parallel search.
    - Available collections:
-     - DarkSHINE Simulation Software: Source code of simulation program based on Geant4 and ROOT, characterized by detector of DarkSHINE experiment.
+     - DarkSHINE_Simulation_Software: Source code of simulation program based on Geant4 and ROOT, characterized by detector of DarkSHINE experiment.
 """
         self.GUIDE_PROMPT: str = """#### Task:
 
@@ -589,7 +589,7 @@ class Pipe:
 
             if (
                 not result.ids
-                or not result.distnces
+                or not result.distances
                 or not result.documents
                 or not reesult.metadatas
             ):
@@ -624,14 +624,14 @@ class Pipe:
         """
         collection = attributes.get("collection", "")
         if not collection:
-            return f'\n<details type="user_proxy">\n<summary>Error. No knowledge search collection specified.</summary>\n</details>\n'
+            return f'\n<details type="user_proxy">\n<summary>Error No knowledge search collection specified.</summary>\n</details>\n'
 
         # Check if the knowledge base is available in the configured ones
         available_knowledge_cols = [
             name.strip() for name in self.valves.KNOWLEDGE_COLLECTIONS.split(",")
         ]
         if collection not in available_knowledge_cols:
-            return f"\n<details type=\"user_proxy\">\n<summary>Error. Collection '{collection}' is not available.</summary>\n</details>\n"
+            return f'\n<details type="user_proxy">\n<summary>Error. Collection {collection}\'is not available.</summary>\n</details>\n'
 
         # Retrieve relevant documents from the knowledge base
         try:
