@@ -77,7 +77,7 @@ class Pipe:
    </code_interpreter>
    - You have access to a Python shell that runs directly in the user's browser, enabling fast execution of code for analysis, calculations, or problem-solving.
    - The Python code you write can incorporate a wide array of libraries, handle data manipulation or visualization, perform API calls for web-related tasks, or tackle virtually any computational challenge. Use this flexibility to **think outside the box, craft elegant solutions, and harness Python's full potential**.
-   - To use it, **you must enclose your code within `<code_interpreter type="code" lang="python">`, `</code_interpreter>` XML tags** and stop right away. If you don't, the code won't execute. Do NOT use triple backticks, because markdown code block will not be executed.
+   - To use it, **you must enclose your code within `<code_interpreter type="code" lang="python">`, `</code_interpreter>` XML tags** and stop right away. If you don't, the code won't execute. DO NOT use markdown code block, because enclosing markdown codeblock with special XML tags will confuse user's browser frontend.
    - When coding, **always aim to print meaningful outputs** (e.g., results, tables, summaries, or visuals) to better interpret and verify the findings. Avoid relying on implicit outputs; prioritize explicit and clear print statements so the results are effectively communicated to the user.
    - No need to save plot, just show it.
    - If the results are unclear, unexpected, or require validation, refine the code and execute it again as needed. Always aim to deliver meaningful insights from the results, iterating if necessary.
@@ -97,7 +97,7 @@ class Pipe:
      - www.googleapis.com: for general search.
      - arxiv.org: for academic paper research. Always use english keywords for arxiv.
    - If no valid search result, maybe causing by network issue, please retry.
-   - **Now today is: {{CURRENT_DATE}}**, use today's date for news search.
+   - **The date today is: {{CURRENT_DATE}}**. So you can search for web to get information up do date {{CURRENT_DATE}}.
 """
         )
         KNOWLEDGE_SEARCH_PROMPT: str = Field(
@@ -135,6 +135,7 @@ class Pipe:
         self.max_loop = self.valves.MAX_LOOP  # Save money
         self.TOOL = {}
         self.prompt_templates = {}
+        self.replace_tags = {}
         if self.valves.USE_CODE_INTERPRETER:
             self.TOOL["code_interpreter"] = self._code_interpreter
             self.prompt_templates["code_interpreter"] = (
@@ -143,14 +144,17 @@ class Pipe:
         if self.valves.USE_WEB_SEARCH:
             self.TOOL["web_search"] = self._web_search
             self.prompt_templates["web_search"] = self.valves.WEB_SEARCH_PROMPT
+            self.replace_tags["web_search"] = "Searching"
         if self.valves.USE_KNOWLEDGE_SEARCH:
             self.TOOL["knowledge_search"] = self._knowledge_search
             self.prompt_templates["knowledge_search"] = (
                 self.valves.KNOWLEDGE_SEARCH_PROMPT
             )
+            self.replace_tags["knowledge_search"] = "Searching"
         # Global vars
         self.emitter = None
         self.total_response = ""
+        self.temp_content = ""  # Temporary string to hold accumulated content
         self._init_knowledge()
 
     def _init_knowledge(self):
@@ -258,9 +262,16 @@ class Pipe:
 
                             # 结束条件判断
                             if choice.get("finish_reason"):
+                                res = self._filter_response_tag()
+                                yield res
+                                # Clean up
+                                if self.temp_content:
+                                    yield self.temp_content
+                                    self.temp_content = ""
                                 self.total_response = self.total_response.lstrip("\n")
                                 tools = self._find_tool_usage(self.total_response)
                                 # if tool is not None:
+                                user_proxy_reply = ""
                                 if tools is not None:
                                     do_pull = True
                                     # Move total_response to messages
@@ -271,23 +282,22 @@ class Pipe:
                                         }
                                     )
                                     self.total_response = ""
-                                    yield "\n<user_proxy_reply>\n"
+                                    #yield "\n<details type=\"user_proxy\">\n<summary>Results</summary>\n"
                                     # Call tools
                                     for tool in tools:
                                         reply = await self.TOOL[tool["name"]](
                                             tool["attributes"], tool["content"]
                                         )
+                                        user_proxy_reply += reply
                                         yield reply
 
                                     messages.append(
                                         {
                                             "role": "user",
-                                            "content": "\n".join(
-                                                [tool["content"] for tool in tools]
-                                            ),
+                                            "content": user_proxy_reply,
                                         }
                                     )
-                                    yield "\n</user_proxy_reply>\n"
+                                    #yield "\n</details>\n"
                                 else:
                                     do_pull = False
                                 break
@@ -299,6 +309,7 @@ class Pipe:
                             if state_output:
                                 yield state_output  # 直接发送状态标记
                                 if state_output == "<think>":
+                                    await asyncio.sleep(0.1)
                                     yield "\n"
 
                             # 内容处理并立即发送
@@ -319,8 +330,13 @@ class Pipe:
                                         yield "</think>"
                                         await asyncio.sleep(0.1)
                                         yield "\n"
+                                if thinking_state["thinking"] != 0:
+                                    res = self._filter_response_tag(content)
+                                    if res:
+                                        yield res
+                                else:
+                                    yield content
 
-                                yield content
 
                 count += 1
         except Exception as e:
@@ -355,6 +371,38 @@ class Pipe:
             self.total_response += delta
             return delta
 
+    def _filter_response_tag(self, content: str = "") -> str:
+        self.temp_content += content
+        res = ""
+        if "<" in self.temp_content:
+            # Conver tool calling tags into content (Except code_interpreter, let openwebui to handle)
+            if len(self.temp_content) > 20:
+                if "<web_search" in self.temp_content or "<knowledge_search" in self.temp_content:
+                    pattern = re.compile(
+                        r"<(web_search|knowledge_search)\s*([^>]*)>(.*?)</\1>",
+                        re.DOTALL,
+                    )
+                    # Find all matches in the self.temp_content
+                    matches = pattern.findall(self.temp_content)
+                    if matches:
+                        match = matches[0]
+                        tag_name = match[0]
+                        attributes_str = match[1]
+                        tag_content = match[2].strip()
+                        summary = self.replace_tags[tag_name] + " " + attributes_str
+                        res += f"\n<details type=\"{tag_name}\">\n<summary>{summary}</summary>\n{tag_content}\n</details>"
+                        self.temp_content = re.sub(pattern, "", self.temp_content)
+                        if self.temp_content:
+                            res += self.temp_content
+                            self.temp_content = ""
+                else:
+                    res += self.temp_content
+                    self.temp_content = ""
+        else:
+            res += self.temp_content
+            self.temp_content = ""
+        return res
+
     def _format_error(self, status_code: int, error: bytes) -> str:
         # 如果 error 已经是字符串，则无需 decode
         if isinstance(error, str):
@@ -380,18 +428,7 @@ class Pipe:
         search_query = content.strip()
 
         if not search_query:
-            return "Error: No search query provided."
-
-        await self.emitter(
-            {
-                "type": "status",
-                "data": {
-                    "action": "web_search",
-                    "description": f"Searching {search_query}",
-                    "done": False,
-                },
-            }
-        )
+            return f"\n<details type=\"user_proxy\">\n<summary>Error: No search query provided.</summary>\n</details>\n"
 
         url = attributes["url"]
 
@@ -420,57 +457,16 @@ class Pipe:
                             search_results.append(f"**{title}**\n{snippet}\n{link}\n")
 
                         if search_results:
-                            await self.emitter(
-                                {
-                                    "type": "status",
-                                    "data": {
-                                        "action": "web_search",
-                                        "description": f"Searched {len(urls)} sites",
-                                        "urls": urls,
-                                        "done": True,
-                                    },
-                                }
-                            )
-                            return "\n\n".join(search_results)
+                            result = f"\n<details type=\"user_proxy\">\n<summary>Searched {len(urls)} sites</summary>\n"
+                            result += "\n\n".join(search_results)
+                            result += "\n</details>\n"
+                            return result
                         else:
-                            await self.emitter(
-                                {
-                                    "type": "status",
-                                    "data": {
-                                        "action": "web_search",
-                                        "description": f"No results found on Google.",
-                                        "done": True,
-                                        "error": True,
-                                    },
-                                }
-                            )
-                            return "No results found on Google."
+                            return f"\n<details type=\"user_proxy\">\n<summary>No results found on Google.</summary>\n</details>\n"
                     else:
-                        await self.emitter(
-                            {
-                                "type": "status",
-                                "data": {
-                                    "action": "web_search",
-                                    "description": f"Google search failed with status code: {response.status_code}",
-                                    "done": True,
-                                    "error": True,
-                                },
-                            }
-                        )
-                        return f"Google search failed with status code: {response.status_code}"
+                        return f"\n<details type=\"user_proxy\">\n<summary>Google search failed with status code: {response.status_code}</summary>\n</details>\n"
             except Exception as e:
-                await self.emitter(
-                    {
-                        "type": "status",
-                        "data": {
-                            "action": "web_search",
-                            "description": f"Error during Google search: {str(e)}",
-                            "done": True,
-                            "error": True,
-                        },
-                    }
-                )
-                return f"Error during Google search: {str(e)}"
+                return f"\n<details type=\"user_proxy\">\n<summary>Error during Google search</summary>\n{str(e)}\n</details>\n"
 
         # Handle ArXiv search
         if url == "arxiv.org" and search_query:
@@ -506,70 +502,18 @@ class Pipe:
                                 arxiv_results.append("Error parsing ArXiv entry.")
 
                         if arxiv_results:
-                            await self.emitter(
-                                {
-                                    "type": "status",
-                                    "data": {
-                                        "action": "web_search",
-                                        "description": f"Searched {len(urls)} entries",
-                                        "urls": urls,
-                                        "done": True,
-                                    },
-                                }
-                            )
-                            return "\n\n".join(arxiv_results)
+                            result = f"\n<details type=\"user_proxy\">\n<summary>Searched {len(urls)} papers</summary>\n"
+                            result += "\n\n".join(arxiv_results)
+                            result += "\n</details>\n"
+                            return result
                         else:
-                            await self.emitter(
-                                {
-                                    "type": "status",
-                                    "data": {
-                                        "action": "web_search",
-                                        "description": f"No results found on ArXiv.",
-                                        "done": True,
-                                        "error": True,
-                                    },
-                                }
-                            )
-                            return "No results found on ArXiv."
+                            return f"\n<details type=\"user_proxy\">\n<summary>No results found on ArXiv.</summary>\n</details>\n"
                     else:
-                        await self.emitter(
-                            {
-                                "type": "status",
-                                "data": {
-                                    "action": "web_search",
-                                    "description": f"ArXiv search failed with status code: {response.status_code}",
-                                    "done": True,
-                                    "error": True,
-                                },
-                            }
-                        )
-                        return f"ArXiv search failed with status code: {response.status_code}"
+                        return f"\n<details type=\"user_proxy\">\n<summary>ArXiv search failed with status code: {response.status_code}</summary>\n</details>\n"
             except Exception as e:
-                await self.emitter(
-                    {
-                        "type": "status",
-                        "data": {
-                            "action": "web_search",
-                            "description": f"Error during ArXiv search: {str(e)}",
-                            "done": True,
-                            "error": True,
-                        },
-                    }
-                )
-                return f"Error during ArXiv search: {str(e)}"
+                return f"\n<details type=\"user_proxy\">\n<summary>Error during ArXiv search</summary>\n{str(e)}\n</details>\n"
 
-        await self.emitter(
-            {
-                "type": "status",
-                "data": {
-                    "action": "web_search",
-                    "description": f"Invalid search source or query.",
-                    "done": True,
-                    "error": True,
-                },
-            }
-        )
-        return "Invalid search source or query."
+        return f"\n<details type=\"user_proxy\">\n<summary>Invalid search source or query.</summary>\n</details>\n"
 
     async def _code_interpreter(self, attributes: dict, content: str) -> str:
         return "done"
