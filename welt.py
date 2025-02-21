@@ -587,13 +587,15 @@ class Pipe:
             ):
                 continue
 
-            for i in range(len(result.ids)):
-                if (
-                    not result.ids[i]
-                    or not result.documents[i]
-                    or not result.metadatas[i]
-                ):
-                    continue
+            if (
+                not result.ids
+                or not result.distnces
+                or not result.documents
+                or not reesult.metadatas
+            ):
+                continue
+
+            for i in range(len(result.documents)):
                 result_object = ResultObject(
                     id=result.ids[i],
                     distance=result.distances[i],
@@ -646,7 +648,6 @@ class Pipe:
                     continue
                 if not isinstance(result.document, list) or not result.document:
                     continue
-                metadata = result.metadata
                 source = result.metadata[0]["source"]
                 document = result.document[0]
 
