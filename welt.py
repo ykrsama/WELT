@@ -1,7 +1,7 @@
 """
 title: WELT
 author: Xuliang
-description: Workflow Enhanced LLM with CoT
+description: Workflow Enhanced LLM with CoT (q
 version: 1.2.10
 licence: MIT
 """
@@ -35,11 +35,18 @@ from open_webui.models.knowledge import (
     KnowledgeForm,
     KnowledgeResponse,
     KnowledgeUserResponse,
+    KnowledgeUserModel,
 )
 
 log = logging.getLogger(__name__)
 log.setLevel("DEBUG")
 
+class ResultObject:
+    def __init__(self, id, distance, document, metadata):
+        self.id = id
+        self.distance = distance
+        self.document = document
+        self.metadata = metadata
 
 class Pipe:
     class Valves(BaseModel):
@@ -58,7 +65,7 @@ class Pipe:
         USE_WEB_SEARCH: bool = Field(default=True)
         USE_KNOWLEDGE_SEARCH: bool = Field(default=True)
         KNOWLEDGE_COLLECTIONS: str = Field(
-            default="DSimu, DAna",
+            default="DarkSHINE Simulation Software",
             description="ID of knowledge collections, seperate by comma",
         )
         EMBEDDING_BATCH_SIZE: int = Field(
@@ -80,12 +87,16 @@ class Pipe:
    </code_interpreter>
    - You have access to a Python shell that runs directly in the user's browser, enabling fast execution of code for analysis, calculations, or problem-solving.
    - The Python code you write can incorporate a wide array of libraries, handle data manipulation or visualization, perform API calls for web-related tasks, or tackle virtually any computational challenge. Use this flexibility to **think outside the box, craft elegant solutions, and harness Python's full potential**.
-   - To use it, **you must enclose your code within `<code_interpreter type="code" lang="python">`, `</code_interpreter>` XML tags** and stop right away. If you don't, the code won't execute. DO NOT use markdown code block, because enclosing markdown codeblock with special XML tags will confuse user's browser frontend.
+   - To use it, **you must enclose your code within `<code_interpreter type="code" lang="python">`, `</code_interpreter>` XML tags** and stop right away. If you don't, the code won't execute.
+   - NEVER use markdown code block or triple backticks with code_interpreter XML tags together, otherwize will break user's browser frontend.
    - When coding, **always aim to print meaningful outputs** (e.g., results, tables, summaries, or visuals) to better interpret and verify the findings. Avoid relying on implicit outputs; prioritize explicit and clear print statements so the results are effectively communicated to the user.
    - No need to save plot, just show it.
    - If the results are unclear, unexpected, or require validation, refine the code and execute it again as needed. Always aim to deliver meaningful insights from the results, iterating if necessary.
    - **If a path to an image, audio, or any file is provided in markdown format in the output, ALWAYS regurgitate word for word, explicitly display it as part of the response to ensure the user can access it easily, do NOT change it.**
-   - Code for test is important. For potentially time-comsuming code, e.g. loading file with unknown size, use argument to control the running scale, and defaulty run on small scale test.
+   - About code style:
+      - Prefer object-oriented programming
+      - Prefer arguments with default value than hard coded
+      - For potentially time-comsuming code, e.g. loading file with unknown size, use argument to control the running scale, and defaulty run on small scale test.
 """
         self.WEB_SEARCH_PROMPT: str = """**Web Search**: `<web_search url="www.googleapis.com">single query</web_search>`
    - You have access to web search, and no need to bother API keys because user can handle by themselves in this tool.
@@ -100,15 +111,14 @@ class Pipe:
    - If no valid search result, maybe causing by network issue, please retry.
    - **The date today is: {{CURRENT_DATE}}**. So you can search for web to get information up do date {{CURRENT_DATE}}.
 """
-        self.KNOWLEDGE_SEARCH_PROMPT: str = """**Knowledge Search**: `<knowledge_search collection="DSimu">single query</knowledge_search>`
+        self.KNOWLEDGE_SEARCH_PROMPT: str = """**Knowledge Search**: `<knowledge_search collection="DarkSHINE Simulation Software">single query</knowledge_search>`
    - You have access to user's local and personal kowledge collections.
-   - To use it, **you must enclose your search queries within** `<knowledge_search collection="DSimu">`, `</knowledge_search>` **XML tags** and stop responding right away without further assumption of what will be done. Do NOT use triple backticks.
+   - To use it, **you must enclose your search queries within** `<knowledge_search collection="DarkSHINE Simulation Software">`, `</knowledge_search>` **XML tags** and stop responding right away without further assumption of what will be done. Do NOT use triple backticks.
    - Err on the side of suggesting search queries if there is **any chance** they might provide useful or related information.
    - In each knowledge_search XML tag, be concise and focused on composing high-quality search queries, avoiding unnecessary elaboration, commentary, or assumptions.
    - You can use multiple lines of knowledge_search XML tag to do parallel search.
    - Available collections:
-     - DSimu: source codes of simulation program based on Geant4 and ROOT, characterized by detector of DarkSHINE experiment.
-     - DAna: source codes of software framework for the DarkSHINE analysis and reconstruction tools.
+     - DarkSHINE Simulation Software: Source code of simulation program based on Geant4 and ROOT, characterized by detector of DarkSHINE experiment.
 """
         self.GUIDE_PROMPT: str = """#### Task:
 
@@ -118,6 +128,7 @@ class Pipe:
 
 - Analyze user's need and final goal according to the chat history
 - Analyze what's the next step to do in order to achieve the user's need. You can decide wether to use tool, or simply response to user.
+- When facing any uncertainty, rather than make assumptions to make-up a reply, you **always use the power of available tools**, to investigate and dig again and again, until everything is so clear.
 - Use only one type of tool at a time, and stop right away. Because you need to wait for the tool execution.
 - Ensure that the tools are effectively utilized to achieve the highest-quality analysis for the user.
 - If tool using returns no helping information, modify the usage of tool and use it again.
@@ -136,13 +147,13 @@ class Pipe:
         if self.valves.USE_WEB_SEARCH:
             self.TOOL["web_search"] = self._web_search
             self.prompt_templates["web_search"] = self.WEB_SEARCH_PROMPT
-            self.replace_tags["web_search"] = "Searching"
+            self.replace_tags["web_search"] = "Querying"
         if self.valves.USE_KNOWLEDGE_SEARCH:
             self.TOOL["knowledge_search"] = self._knowledge_search
             self.prompt_templates["knowledge_search"] = (
                 self.KNOWLEDGE_SEARCH_PROMPT
             )
-            self.replace_tags["knowledge_search"] = "Searching"
+            self.replace_tags["knowledge_search"] = "Querying"
         # Global vars
         self.emitter = None
         self.total_response = ""
@@ -150,15 +161,26 @@ class Pipe:
         self._init_knowledge()
 
     def _init_knowledge(self):
-        log.debug(f"Getting first collection")
-
-        first_id = VECTOR_DB_CLIENT.client.list_collections()[0]
-        first_collection = VECTOR_DB_CLIENT.client.get_collection(name=first_id).get()
-        metadata = first_collection["metadatas"]
-        log.debug(f"Metadata: {metadata}")
-
-        knowledge_bases = Knowledges.get_knowledge_bases()
-        log.debug(f"Knowldge bases: {knowledge_bases}")
+        """
+        初始化知识库数据，将其存储在 self.knowledges 字典中。
+        """
+        log.debug("Initializing knowledge bases")
+        self.knowledges = {}  # 初始化知识库字典
+        try:
+            knowledge_bases = Knowledges.get_knowledge_bases()  # 获取所有知识库 # FIXME: 暂时只适用于admin.对于user需要获取uuid...
+            
+            # 遍历知识库列表
+            for knowledge in knowledge_bases:
+                knowledge_name = knowledge.name  # 获取知识库名称
+                if knowledge_name:  # 确保知识库名称存在
+                    log.debug(f"Adding knowledge base: {knowledge_name}")
+                    self.knowledges[knowledge_name] = knowledge  # 将知识库信息存储到字典中
+                else:
+                    log.warning("Found a knowledge base without a name, skipping it.")
+            
+            log.info(f"Initialized {len(self.knowledges)} knowledge bases: {list(self.knowledges.keys())}")
+        except Exception as e:
+            log.debug(f"Error initializing knowledge: {e}")
 
     def pipes(self):
         return [
@@ -420,7 +442,7 @@ class Pipe:
         search_query = content.strip()
 
         if not search_query:
-            return f"\n<details type=\"user_proxy\">\n<summary>Error: No search query provided.</summary>\n</details>\n"
+            return f"\n<details type=\"user_proxy\">\n<summary>Error. No search query provided.</summary>\n</details>\n"
 
         url = attributes["url"]
 
@@ -511,20 +533,19 @@ class Pipe:
         return "done"
 
     def _query_collection(
-        self, collection_name: str, query_keywords: str, top_k: int = 3
+        self, knowledge_name: str, query_keywords: str, top_k: int = 3
     ) -> list:
         """
-        Query the vector database by collection name and keywords, and return metadata and contexts.
+        Query the vector database by knowledge name and keywords, and return metadata and contexts.
 
         Args:
-            collection_name (str): The name of the collection to query.
+            knowledge_name (str): The name of the knowledge to query.
             query_keywords (str): The query keywords to search for.
             top_k (int): The number of top results to retrieve.
 
         Returns:
             list: A list of dictionaries containing metadata and context documents.
         """
-        # Assuming VECTOR_DB_CLIENT.search interacts with the vector DB and retrieves the relevant documents
         log.debug(f"Generating Embeddings")
         embeddings = generate_embeddings(
             engine="openai",
@@ -535,25 +556,43 @@ class Pipe:
             user=None,
         )
         log.debug("Searching VECTOR_DB_CLIENT")
-        result = VECTOR_DB_CLIENT.search(
-            collection_name=collection_name,
-            vectors=[embeddings],
-            limit=top_k,
-        )
-        if not result:
-            return []
-        ids = result.ids[0]
-        metadatas = result.metadatas[0]
-        documents = result.documents[0]
+        knowledge = self.knowledges.get(knowledge_name, [])
+        if not knowledge:
+            raise ValueError(f"No knowledge name {knowledge_name} found in knowledge base. Availables knowledges: {vars(self.knowledges.keys())}")
 
-        # Package the results into a list of dictionaries
-        results = []
-        for i in range(len(ids)):
-            results.append(
-                {"id": ids[i], "metadata": metadatas[i], "document": documents[i]}
+        file_ids = knowledge.data["file_ids"]
+        all_results = []
+    
+        for file_id in file_ids:
+            file_name = "file-" + file_id
+            result = VECTOR_DB_CLIENT.search(
+                collection_name=file_name,
+                vectors=[embeddings],
+                limit=top_k,
             )
 
-        return results
+            if not result or not hasattr(result, "ids") or not result.ids:
+                continue
+
+            if not all(hasattr(result, attr) for attr in ["ids", "distances", "documents", "metadatas"]):
+                continue
+    
+            for i in range(len(result.ids)):
+                if (not result.ids[i] or not result.documents[i] or not result.metadatas[i]):
+                    continue
+                result_object = ResultObject(
+                    id=result.ids[i],
+                    distance=result.distances[i],
+                    document=result.documents[i],
+                    metadata=result.metadatas[i],
+                )
+                all_results.append(result_object)
+    
+        # Sort all results by distance and select the top_k
+        all_results.sort(key=lambda x: x.distance)
+        top_results = all_results[:top_k]
+    
+        return top_results
 
     async def _knowledge_search(self, attributes: dict, content: str) -> str:
         """
@@ -569,35 +608,43 @@ class Pipe:
         """
         collection = attributes.get("collection", "")
         if not collection:
-            return "Error: No knowledge search collection specified."
+            return f"\n<details type=\"user_proxy\">\n<summary>Error. No knowledge search collection specified.</summary>\n</details>\n"
 
         # Check if the knowledge base is available in the configured ones
         available_knowledge_cols = [
             name.strip() for name in self.valves.KNOWLEDGE_COLLECTIONS.split(",")
         ]
         if collection not in available_knowledge_cols:
-            return f"Error: Collection '{collection}' is not available."
+            return f"\n<details type=\"user_proxy\">\n<summary>Error. Collection '{collection}' is not available.</summary>\n</details>\n"
 
         # Retrieve relevant documents from the knowledge base
         try:
             results = self._query_collection(collection, content)
             if not results:
-                return (
-                    f"No relevant information found in the collection '{collection}'."
-                )
+                return f"\n<details type=\"user_proxy\">\n<summary>Found nothing in the collection '{collection}'.</summary>\n</details>\n"
 
             # Format the results for output
             formatted_results = []
             for result in results:
-                metadata = result.get("metadata", {})
-                document = result.get("document", "")
+                if not result.metadata or not result.document:
+                    continue
+                if not isinstance(result.metadata, list) or not result.metadata:
+                    continue
+                if not isinstance(result.document, list) or not result.document:
+                    continue
+                metadata = result.metadata
+                source = result.metadata[0]['source']
+                document = result.document[0]
+                
                 formatted_results.append(
-                    f"**Metadata**: {metadata}\n**Document**:\n```\n{document}\n```"
+                    f"**Source**: {source}\n**Context**:\n```\n{document}\n```"
                 )
-
-            return "\n\n".join(formatted_results)
+            reply = f"\n<details type=\"user_proxy\">\n<summary>Found {len(results)} results.</summary>\n"
+            reply += "\n\n".join(formatted_results)
+            reply += "\n</details>\n"
+            return reply
         except Exception as e:
-            return f"Error during Knowledge Search processing: {str(e)}"
+            return f"\n<details type=\"user_proxy\">\n<summary>Error during Knowledge Search processing</summary>\n{str(e)}\n</details>\n"
 
     def _find_tool_usage(self, content):
         tools = []
