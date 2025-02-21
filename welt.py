@@ -11,6 +11,7 @@ import io, sys
 import json
 import httpx
 import re
+import requests
 from typing import AsyncGenerator, Callable, Awaitable, Optional, List
 from pydantic import BaseModel, Field
 import asyncio
@@ -100,12 +101,12 @@ class Pipe:
       - Prefer arguments with default value than hard coded
       - For potentially time-comsuming code, e.g. loading file with unknown size, use argument to control the running scale, and defaulty run on small scale test.
 """
-        self.WEB_SEARCH_PROMPT: str = """**Web Search**: `<web_search url="www.googleapis.com">single query</web_search>`
+        self.WEB_SEARCH_PROMPT: str = """**Web Search**: `<web_search url="www.googleapis.com">query keyword</web_search>`
    - You have access to web search, and no need to bother API keys because user can handle by themselves in this tool.
-   - To use it, **you must enclose your search queries within** `<web_search url="www.googleapis.com">`, `</web_search>` **XML tags** and stop responding right away without further assumption of what will be done. Do NOT use triple backticks.
+   - To use it, **you must enclose your search query within** `<web_search url="www.googleapis.com">`, `</web_search>` **XML tags** and stop responding right away without further assumption of what will be done. Do NOT use triple backticks.
    - Err on the side of suggesting search queries if there is **any chance** they might provide useful or updated information.
-   - Always prioritize providing actionable and broad queries that maximize informational coverage.
-   - In each web_search XML tag, be concise and focused on composing high-quality search queries, avoiding unnecessary elaboration, commentary, or assumptions.
+   - Always prioritize providing actionable and broad query that maximize informational coverage.
+   - In each web_search XML tag, be concise and focused on composing high-quality search query, few keywords are good, **avoiding unnecessary elaboration, commentary, or assumptions**.
    - You can use multiple lines of web_search XML tag to do parallel search.
    - Available urls:
      - www.googleapis.com: for general search.
@@ -113,27 +114,26 @@ class Pipe:
    - If no valid search result, maybe causing by network issue, please retry.
    - **The date today is: {{CURRENT_DATE}}**. So you can search for web to get information up do date {{CURRENT_DATE}}.
 """
-        self.KNOWLEDGE_SEARCH_PROMPT: str = """**Knowledge Search**: `<knowledge_search collection="DarkSHINE_Simulation_Software">single query</knowledge_search>`
+        self.KNOWLEDGE_SEARCH_PROMPT: str = """**Knowledge Search**: `<knowledge_search collection="DarkSHINE_Simulation_Software">query keyowrds</knowledge_search>`
    - You have access to user's local and personal kowledge collections.
-   - To use it, **you must enclose your search queries within** `<knowledge_search collection="DarkSHINE_Simulation_Software">`, `</knowledge_search>` **XML tags** and stop responding right away without further assumption of what will be done. Do NOT use triple backticks.
-   - Err on the side of suggesting search queries if there is **any chance** they might provide useful or related information.
-   - In each knowledge_search XML tag, be concise and focused on composing high-quality search queries, avoiding unnecessary elaboration, commentary, or assumptions.
-   - You can use multiple lines of knowledge_search XML tag to do parallel search.
+   - To use it, **you must enclose your search query within** `<knowledge_search collection="DarkSHINE_Simulation_Software">`, `</knowledge_search>` **XML tags** and stop responding right away without further assumption of what will be done. Do NOT use triple backticks.
+   - In each knowledge_search XML tag, be concise and focused on composing high-quality search query, few keywordds are good, **avoiding unnecessary elaboration, commentary, or assumptions**.
+   - **Only use one knowledge_search XML tags, only one query at one time.** Do not use multiple queries, this will cause error.
    - Available collections:
-     - DarkSHINE_Simulation_Software: Source code of simulation program based on Geant4 and ROOT, characterized by detector of DarkSHINE experiment. Use English to search this collection.
+     - DarkSHINE_Simulation_Software: Source code of simulation program based on Geant4 and ROOT, characterized by detector of DarkSHINE experiment. **Must use English to query this collection**.
 """
         self.GUIDE_PROMPT: str = """#### Task:
 
-- Analyze the chat history to determine the necessity of using tools. Available Tools: Code Interpreter, Web Search, or Knowledge Search.
+- You are a independent, paicient, careful and accurate assistant, utilizing tools to help user. Available Tools: Code Interpreter, Web Search, or Knowledge Search.
 
 #### Guidelines:
 
-- Analyze user's need and final goal according to the chat history
-- Analyze what's the next step to do in order to achieve the user's need. You can decide wether to use tool, or simply response to user.
-- When facing any uncertainty, rather than make assumptions to make-up a reply, you **always use the power of available tools**, to investigate and dig again and again, until everything is so clear.
-- Use only one type of tool at a time, and stop right away. Because you need to wait for the tool execution.
-- Ensure that the tools are effectively utilized to achieve the highest-quality analysis for the user.
-- If tool using returns no helping information, modify the usage of tool and use it again.
+- Break down user's need and focus on one task at a time, do this round by round until you solve all the problems.
+- Do not need to solve all the user query in single turn.
+- Analyze what's the next step to do in order to check off all the tasks. You can decide wether to use tool, or simply response to user (only when problem and no any unclear questions nor assumptions).
+- Use only one type of tool at a time, and stop right away. Because you need to wait for the tool execution. Just save tasks to next round.
+- When facing any uncertainty, **DO NOT make ANY assumptions**, **DO NOT make up any reply**, **DO NOT ask user for information**, you should use tools to investigate and dig every little problem, until everything is crystal clear.
+- If tool get's an error, or unsatisfying, please retry tools. No hurry to get final reply to user.
 - All responses should be communicated in the chat's primary language, ensuring seamless understanding. If the chat is multilingual, default to English for clarity.
 """
 
@@ -299,7 +299,6 @@ class Pipe:
                                         }
                                     )
                                     self.total_response = ""
-                                    # yield "\n<details type=\"user_proxy\">\n<summary>Results</summary>\n"
                                     # Call tools
                                     for tool in tools:
                                         reply = await self.TOOL[tool["name"]](
@@ -314,7 +313,6 @@ class Pipe:
                                             "content": user_proxy_reply,
                                         }
                                     )
-                                    # yield "\n</details>\n"
                                 else:
                                     do_pull = False
                                 break
@@ -447,7 +445,7 @@ class Pipe:
         search_query = content.strip()
 
         if not search_query:
-            return f'\n<details type="user_proxy">\n<summary>Error. No search query provided.</summary>\n</details>\n'
+            return f'\n<details type=\"user_proxy\">\n<summary>Web Search failed. No search query provided.</summary>\n</details>\n'
 
         url = attributes["url"]
 
@@ -476,16 +474,16 @@ class Pipe:
                             search_results.append(f"**{title}**\n{snippet}\n{link}\n")
 
                         if search_results:
-                            result = f'\n<details type="user_proxy">\n<summary>Searched {len(urls)} sites</summary>\n'
+                            result = f'\n<details type=\"user_proxy\">\n<summary>Searched {len(urls)} sites</summary>\n'
                             result += "\n\n".join(search_results)
                             result += "\n</details>\n"
                             return result
                         else:
-                            return f'\n<details type="user_proxy">\n<summary>No results found on Google.</summary>\n</details>\n'
+                            return f'\n<details type=\"user_proxy\">\n<summary>No results found on Google.</summary>\n</details>\n'
                     else:
-                        return f'\n<details type="user_proxy">\n<summary>Google search failed with status code {response.status_code}</summary>\n</details>\n'
+                        return f'\n<details type=\"user_proxy\">\n<summary>Google search failed with status code {response.status_code}</summary>\n</details>\n'
             except Exception as e:
-                return f'\n<details type="user_proxy">\n<summary>Error during Google search</summary>\n{str(e)}\n</details>\n'
+                return f'\n<details type=\"user_proxy\">\n<summary>Error during Google search</summary>\n{str(e)}\n</details>\n'
 
         # Handle ArXiv search
         if url == "arxiv.org" and search_query:
@@ -521,21 +519,47 @@ class Pipe:
                                 arxiv_results.append("Error parsing ArXiv entry.")
 
                         if arxiv_results:
-                            result = f'\n<details type="user_proxy">\n<summary>Searched {len(urls)} papers</summary>\n'
+                            result = f'\n<details type=\"user_proxy\">\n<summary>Searched {len(urls)} papers</summary>\n'
                             result += "\n\n".join(arxiv_results)
                             result += "\n</details>\n"
                             return result
                         else:
-                            return f'\n<details type="user_proxy">\n<summary>No results found on ArXiv.</summary>\n</details>\n'
+                            return f'\n<details type=\"user_proxy\">\n<summary>No results found on ArXiv.</summary>\n</details>\n'
                     else:
-                        return f'\n<details type="user_proxy">\n<summary>ArXiv search failed with status code {response.status_code}</summary>\n</details>\n'
+                        return f'\n<details type=\"user_proxy\">\n<summary>ArXiv search failed with status code {response.status_code}</summary>\n</details>\n'
             except Exception as e:
-                return f'\n<details type="user_proxy">\n<summary>Error during ArXiv search</summary>\n{str(e)}\n</details>\n'
+                return f'\n<details type=\"user_proxy\">\n<summary>Error during ArXiv search</summary>\n{str(e)}\n</details>\n'
 
-        return f'\n<details type="user_proxy">\n<summary>Invalid search source or query.</summary>\n</details>\n'
+        return f'\n<details type=\"user_proxy\">\n<summary>Invalid search source or query.</summary>\n</details>\n'
 
     async def _code_interpreter(self, attributes: dict, content: str) -> str:
         return "done"
+
+    def _generate_openai_batch_embeddings(
+        self,
+        model: str,
+        texts: list[str],
+        url: str = "https://api.openai.com/v1",
+        key: str = "",
+    ) -> Optional[list[list[float]]]:
+        try:
+            r = requests.post(
+                f"{url}/embeddings",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {key}",
+                },
+                json={"input": texts, "model": model},
+            )
+            r.raise_for_status()
+            data = r.json()
+            if "data" in data:
+                return [elem["embedding"] for elem in data["data"]]
+            else:
+                raise "Something went wrong :/"
+        except Exception as e:
+            print(e)
+            return None
 
     async def _query_collection(
         self, knowledge_name: str, query_keywords: str, top_k: int = 3
@@ -551,15 +575,25 @@ class Pipe:
         Returns:
             list: A list of dictionaries containing metadata and context documents.
         """
-        log.debug(f"Generating Embeddings")
-        embeddings = generate_embeddings(
-            engine="openai",
-            model="BAAI/bge-m3",
-            text=query_keywords,
-            url=self.valves.DEEPSEEK_API_BASE_URL,
-            key=self.valves.DEEPSEEK_API_KEY,
-            user=None,
-        )
+        retries = 3
+        embeddings = None
+        query_keywords = query_keywords.strip()
+        for i in range(retries):
+            log.debug(f"Generating Embeddings")
+            try:
+                embeddings = self._generate_openai_batch_embeddings(
+                    model="BAAI/bge-m3",
+                    texts=query_keywords,
+                    url=self.valves.DEEPSEEK_API_BASE_URL,
+                    key=self.valves.DEEPSEEK_API_KEY,
+                )
+                break
+            except Exception as e:
+                log.error(f"Generating Embeddings attempt {i + 1} failed: {e}")
+                await asyncio.sleep(2)
+        if not embeddings:
+            raise ValueError(f"Faild generating embeddings, could be a network fluctuation.")
+        log.debug(f"Embeddings length: {len(embeddings)}")
         log.debug("Searching VECTOR_DB_CLIENT")
         knowledge = self.knowledges.get(knowledge_name, [])
         if not knowledge:
@@ -623,22 +657,28 @@ class Pipe:
             str: The retrieved relevant content or an error message.
         """
         collection = attributes.get("collection", "")
+        content = content.strip()
         if not collection:
-            return f'\n<details type="user_proxy">\n<summary>Error No knowledge search collection specified.</summary>\n</details>\n'
+            return f'\n<details type=\"user_proxy\">\n<summary>Error: No knowledge search collection specified.</summary>\n</details>\n'
 
         # Check if the knowledge base is available in the configured ones
         available_knowledge_cols = [
             name.strip() for name in self.valves.KNOWLEDGE_COLLECTIONS.split(",")
         ]
         if collection not in available_knowledge_cols:
-            return f'\n<details type="user_proxy">\n<summary>Error. Collection {collection}\'is not available.</summary>\n</details>\n'
+            return f'\n<details type=\"user_proxy\">\n<summary>Error: Collection {collection} is not available.</summary>\n</details>\n'
 
         # Retrieve relevant documents from the knowledge base
         try:
             results = await self._query_collection(collection, content)
-            if not results:
-                return f"\n<details type=\"user_proxy\">\n<summary>Found nothing in the collection '{collection}'.</summary>\n</details>\n"
 
+            if not results:
+                return f"\n<details type=\"user_proxy\">\n<summary>Found nothing with query {content}.</summary>\n</details>\n"
+
+        except Exception as e:
+            return f'\n<details type="user_proxy">\n<summary>Faild searching {content}</summary>\n{str(e)}\n</details>\n'
+
+        try:
             # Format the results for output
             formatted_results = []
             for result in results:
@@ -660,7 +700,7 @@ class Pipe:
             reply += "\n</details>\n"
             return reply
         except Exception as e:
-            return f'\n<details type="user_proxy">\n<summary>Error during Knowledge Search processing</summary>\n{str(e)}\n</details>\n'
+            return f'\n<details type="user_proxy">\n<summary>Error during formatting result for {content}</summary>\n{str(e)}\n</details>\n'
 
     def _find_tool_usage(self, content):
         tools = []
