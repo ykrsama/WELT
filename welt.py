@@ -41,7 +41,7 @@ from open_webui.models.knowledge import (
 )
 
 log = logging.getLogger(__name__)
-log.setLevel("INFO")
+log.setLevel("DEBUG")
 
 
 class ResultObject:
@@ -130,6 +130,7 @@ class Pipe:
 
 #### Guidelines:
 
+- First, you provide an overall plan to describe how to solve the problem. Output plain text and prevent using XML tags here.
 - Break down user's need and focus on one task at a time, do this round by round until you solve all the problems.
 - Analyze what's the next step to do in order to check off all the tasks. You can decide wether to use tool, or simply response to user (only when problem and no any unclear questions nor assumptions).
 - When you didn't get an answer and facing uncertainty, **DO NOT make ANY assumptions, NOR make up any reply**, NOR ask user for information**, you should **use tools again**  to investigate and dig every little problem, until everything is crystal clear with it's own reference.
@@ -140,17 +141,6 @@ class Pipe:
         self.TOOL = {}
         self.prompt_templates = {}
         self.replace_tags = {}
-        if self.valves.USE_CODE_INTERPRETER:
-            self.TOOL["code_interpreter"] = self._code_interpreter
-            self.prompt_templates["code_interpreter"] = self.CODE_INTERPRETER_PROMPT
-        if self.valves.USE_WEB_SEARCH:
-            self.TOOL["web_search"] = self._web_search
-            self.prompt_templates["web_search"] = self.WEB_SEARCH_PROMPT
-            self.replace_tags["web_search"] = "Querying"
-        if self.valves.USE_KNOWLEDGE_SEARCH:
-            self.TOOL["knowledge_search"] = self._knowledge_search
-            self.prompt_templates["knowledge_search"] = self.KNOWLEDGE_SEARCH_PROMPT
-            self.replace_tags["knowledge_search"] = "Querying"
         # Global vars
         self.emitter = None
         self.total_response = ""
@@ -188,6 +178,19 @@ class Pipe:
             log.debug(f"Error initializing knowledge: {e}")
 
     def pipes(self):
+        self.max_loop = self.valves.MAX_LOOP  # Save moneya
+        if self.valves.USE_CODE_INTERPRETER:
+            self.TOOL["code_interpreter"] = self._code_interpreter
+            self.prompt_templates["code_interpreter"] = self.CODE_INTERPRETER_PROMPT
+        if self.valves.USE_WEB_SEARCH:
+            self.TOOL["web_search"] = self._web_search
+            self.prompt_templates["web_search"] = self.WEB_SEARCH_PROMPT
+            self.replace_tags["web_search"] = "Querying"
+        if self.valves.USE_KNOWLEDGE_SEARCH:
+            self.TOOL["knowledge_search"] = self._knowledge_search
+            self.prompt_templates["knowledge_search"] = self.KNOWLEDGE_SEARCH_PROMPT
+            self.replace_tags["knowledge_search"] = "Querying"
+
         return [
             {
                 "id": self.valves.DEEPSEEK_API_MODEL,
@@ -285,10 +288,10 @@ class Pipe:
                                 if not self.immediate_stop:
                                     res, tag_name= self._filter_response_tag()
                                     yield res
-                                # Clean up
-                                if self.temp_content:
-                                    yield self.temp_content
-                                    self.temp_content = ""
+                                    # Clean up
+                                    if self.temp_content:
+                                        yield self.temp_content
+                                        self.temp_content = ""
                                 self.total_response = self.total_response.lstrip("\n")
                                 tools = self._find_tool_usage(self.total_response)
                                 # if tool is not None:
@@ -361,6 +364,8 @@ class Pipe:
                                             self.current_tag_name = None
                                             self.temp_content = ""
                                             res = ""
+                                            # clip total response:
+                                            self.total_response = self.total_response[:-len(content)]
                                     if res:
                                         yield res
                                            
@@ -781,4 +786,7 @@ class Pipe:
         else:
             context_message = {"role": "system", "content": result}
             messages.insert(0, context_message)
+
+        log.debug("Current System Prompt:")
+        log.debug(result)
 
