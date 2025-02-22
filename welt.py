@@ -155,6 +155,7 @@ class Pipe:
         self.emitter = None
         self.total_response = ""
         self.temp_content = ""  # Temporary string to hold accumulated content
+        self.current_tag_name = None
         self.immediate_stop = False
         self._init_knowledge()
 
@@ -281,8 +282,9 @@ class Pipe:
                             # 结束条件判断
                             if choice.get("finish_reason") or self.immediate_stop:
                                 self.immediate_stop = False
-                                res, tag_name= self._filter_response_tag()
-                                yield res
+                                if not self.immediate_stop:
+                                    res, tag_name= self._filter_response_tag()
+                                    yield res
                                 # Clean up
                                 if self.temp_content:
                                     yield self.temp_content
@@ -349,10 +351,19 @@ class Pipe:
                                         yield "\n"
                                 if thinking_state["thinking"] != 0:
                                     res, tag_name = self._filter_response_tag(content)
-                                    if res:
-                                        yield res
                                     if tag_name == "knowledge_search":
                                         self.immediate_stop = True
+                                    if tag_name == "web_search":
+                                        self.current_tag_name = tag_name
+                                    if tag_name is None and self.current_tag_name == "web_search":
+                                        if res:
+                                            self.immediate_stop = True
+                                            self.current_tag_name = None
+                                            self.temp_content = ""
+                                            res = ""
+                                    if res:
+                                        yield res
+                                           
                                 else:
                                     yield content
 
