@@ -130,7 +130,7 @@ class Pipe:
 
 #### Guidelines:
 
-- First, you provide an overall plan to describe how to solve the problem.
+- First, you provide an overall plan to describe how to solve the problem. Please don't use XML tags during this part.
 - Second, break down user's need and focus on one task at a time, do this round by round until you solve all the problems.
 - Third, analyze what's the next step to do in order to check off all the tasks. You can decide wether to use tool, or simply response to user (only when problem and no any unclear questions nor assumptions).
 - When you didn't get an answer and facing uncertainty, **DO NOT make ANY assumptions, NOR make up any reply**, NOR ask user for information**, you should **use tools again**  to investigate and dig every little problem, until everything is crystal clear with it's own reference.
