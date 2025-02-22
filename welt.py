@@ -84,9 +84,8 @@ class Pipe:
         # Configs
         self.valves = self.Valves()
         self.data_prefix = "data:"
-        self.max_loop = self.valves.MAX_LOOP  # Save money
-        self.session = requests.Session()
-        self.session.headers.update({'Authorization': f'Bearer {self.valves.DEEPSEEK_API_KEY}', 'Content-Type': 'application/json'})
+        self.max_loop = self.valves.MAX_LOOP  # Save moneya
+        self.client = httpx.AsyncClient(http2=True)
         self.CODE_INTERPRETER_PROMPT: str = """**Code Interpreter**:
    <code_interpreter type="code" lang="python">
    codes
@@ -462,7 +461,7 @@ class Pipe:
             google_search_url = f"https://www.googleapis.com/customsearch/v1?q={search_query}&key={self.valves.GOOGLE_PSE_API_KEY}&cx={self.valves.GOOGLE_PSE_ENGINE_ID}&num=5"
 
             try:
-                async with httpx.AsyncClient() as client:
+                async with httpx.AsyncClient(http2=True) as client:
                     response = await client.get(google_search_url)
                     if response.status_code == 200:
                         data = response.json()
@@ -493,7 +492,7 @@ class Pipe:
             arxiv_search_url = f"http://export.arxiv.org/api/query?search_query=all:{search_query}&start=0&max_results=5"
 
             try:
-                async with httpx.AsyncClient() as client:
+                async with httpx.AsyncClient(http2=True) as client:
                     response = await client.get(arxiv_search_url)
                     if response.status_code == 200:
                         data = response.text
@@ -538,27 +537,35 @@ class Pipe:
     async def _code_interpreter(self, attributes: dict, content: str) -> str:
         return "done"
 
-    def _generate_openai_batch_embeddings(
+    async def _generate_openai_batch_embeddings(
         self,
         model: str,
-        texts: list[str],
+        texts: List[str],
         url: str = "https://api.openai.com/v1",
         key: str = "",
-    ) -> Optional[list[list[float]]]:
+    ) -> Optional[List[List[float]]]:
         try:
-            r = session.post(
+            # Construct the API request
+            response = await self.client.post(
                 f"{url}/embeddings",
                 json={"input": texts, "model": model},
+                headers={"Authorization": f"Bearer {key}"},
             )
-            r.raise_for_status()
-            data = r.json()
+    
+            # Check for valid response
+            response.raise_for_status()  # Will raise an HTTPError for bad responses
+    
+            # Parse and return embeddings if available
+            data = response.json()
             if "data" in data:
                 return [elem["embedding"] for elem in data["data"]]
             else:
-                raise "Something went wrong :/"
+                raise ValueError("Response from OpenAI API did not contain 'data'.")
+        except httpx.HTTPStatusError as e:
+            log.error(f"HTTP error occurred: {e.response.status_code} - {e.response.text}")
         except Exception as e:
-            print(e)
-            return None
+            log.error(f"An error occurred while generating embeddings: {str(e)}")
+        return None
 
     async def _query_collection(
         self, knowledge_name: str, query_keywords: str, top_k: int = 3
@@ -580,7 +587,7 @@ class Pipe:
         for i in range(retries):
             log.debug(f"Generating Embeddings")
             try:
-                embeddings = self._generate_openai_batch_embeddings(
+                embeddings = await self._generate_openai_batch_embeddings(
                     model="BAAI/bge-m3",
                     texts=[query_keywords],
                     url=self.valves.DEEPSEEK_API_BASE_URL,
