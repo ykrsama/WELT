@@ -86,6 +86,7 @@ class Pipe:
         self.data_prefix = "data:"
         self.max_loop = self.valves.MAX_LOOP  # Save money
         self.session = requests.Session()
+        self.session.headers.update({'Authorization': f'Bearer {self.valves.DEEPSEEK_API_KEY}', 'Content-Type': 'application/json'})
         self.CODE_INTERPRETER_PROMPT: str = """**Code Interpreter**:
    <code_interpreter type="code" lang="python">
    codes
@@ -547,10 +548,6 @@ class Pipe:
         try:
             r = session.post(
                 f"{url}/embeddings",
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {key}",
-                },
                 json={"input": texts, "model": model},
             )
             r.raise_for_status()
@@ -589,8 +586,8 @@ class Pipe:
                     url=self.valves.DEEPSEEK_API_BASE_URL,
                     key=self.valves.DEEPSEEK_API_KEY,
                 )
-                if embeddings:
-                    embeddings = embeddings[0] if isinstance(embeddings, list) else embeddings
+                if isinstance(embeddings, list):
+                    embeddings = embeddings[0]
                     break
             except Exception as e:
                 log.error(f"Generating Embeddings attempt {i + 1} failed: {e}")
