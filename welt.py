@@ -126,7 +126,7 @@ class Pipe:
 """
         self.GUIDE_PROMPT: str = """#### Task:
 
-- You are a independent, paicient, careful and accurate assistant, utilizing tools to help user. Available Tools: Code Interpreter, Web Search, or Knowledge Search.
+- You are a independent, patient, careful and accurate assistant, utilizing tools to help user. Available Tools: Code Interpreter, Web Search, or Knowledge Search.
 
 #### Guidelines:
 
