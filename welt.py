@@ -484,7 +484,7 @@ class Pipe:
         search_query = content.strip()
 
         if not search_query:
-            return f'\n<details type=\"user_proxy\">\n<summary>Web Search failed. No search query provided.</summary>\n</details>\n'
+            return f'\n<details type=\"user_proxy\">\n<summary>No search query provided</summary>\n</details>\n'
 
         url = attributes["url"]
 
@@ -518,7 +518,7 @@ class Pipe:
                             result += "\n</details>\n"
                             return result
                         else:
-                            return f'\n<details type=\"user_proxy\">\n<summary>No results found on Google.</summary>\n</details>\n'
+                            return f'\n<details type=\"user_proxy\">\n<summary>No results found on Google</summary>\n</details>\n'
                     else:
                         return f'\n<details type=\"user_proxy\">\n<summary>Google search failed with status code {response.status_code}</summary>\n</details>\n'
             except Exception as e:
@@ -555,7 +555,7 @@ class Pipe:
                                     f"**{title}**\n{summary}\n{link}\n"
                                 )
                             else:
-                                arxiv_results.append("Error parsing ArXiv entry.")
+                                log.error("Error parsing ArXiv entry.")
 
                         if arxiv_results:
                             result = f'\n<details type=\"user_proxy\">\n<summary>Searched {len(urls)} papers</summary>\n'
@@ -563,13 +563,13 @@ class Pipe:
                             result += "\n</details>\n"
                             return result
                         else:
-                            return f'\n<details type=\"user_proxy\">\n<summary>No results found on ArXiv.</summary>\n</details>\n'
+                            return f'\n<details type=\"user_proxy\">\n<summary>No results found on ArXiv</summary>\n</details>\n'
                     else:
                         return f'\n<details type=\"user_proxy\">\n<summary>ArXiv search failed with status code {response.status_code}</summary>\n</details>\n'
             except Exception as e:
                 return f'\n<details type=\"user_proxy\">\n<summary>Error during ArXiv search</summary>\n{str(e)}\n</details>\n'
 
-        return f'\n<details type=\"user_proxy\">\n<summary>Invalid search source or query.</summary>\n</details>\n'
+        return f'\n<details type=\"user_proxy\">\n<summary>Invalid search source or query</summary>\n</details>\n'
 
     async def _code_interpreter(self, attributes: dict, content: str) -> str:
         return "done"
@@ -740,7 +740,7 @@ class Pipe:
                 formatted_results.append(
                     f"\n**Source**: {source}\n\n**Context**:\n\n{document}\n"
                 )
-            reply = f'\n<details type="user_proxy">\n<summary>Found {len(results)} results.</summary>\n'
+            reply = f'\n<details type="user_proxy">\n<summary>Found {len(results)} results</summary>\n'
             reply += "\n\n".join(formatted_results)
             reply += "\n</details>\n"
             return reply
