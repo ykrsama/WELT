@@ -130,9 +130,9 @@ class Pipe:
 
 #### Guidelines:
 
-- First, you provide an overall plan to describe how to solve the problem. Output plain text and prevent using XML tags here.
-- Break down user's need and focus on one task at a time, do this round by round until you solve all the problems.
-- Analyze what's the next step to do in order to check off all the tasks. You can decide wether to use tool, or simply response to user (only when problem and no any unclear questions nor assumptions).
+- First, you provide an overall plan to describe how to solve the problem.
+- Second, break down user's need and focus on one task at a time, do this round by round until you solve all the problems.
+- Third, analyze what's the next step to do in order to check off all the tasks. You can decide wether to use tool, or simply response to user (only when problem and no any unclear questions nor assumptions).
 - When you didn't get an answer and facing uncertainty, **DO NOT make ANY assumptions, NOR make up any reply**, NOR ask user for information**, you should **use tools again**  to investigate and dig every little problem, until everything is crystal clear with it's own reference.
 - If tool get's an error, or with unsatisfying info, please retry tools.
 - All responses should be communicated in the chat's primary language, ensuring seamless understanding. If the chat is multilingual, default to English for clarity.
@@ -140,7 +140,10 @@ class Pipe:
 
         self.TOOL = {}
         self.prompt_templates = {}
-        self.replace_tags = {}
+        self.replace_tags = {
+            "web_search": "Querying",
+            "knowledge_search": "Querying"
+        }
         # Global vars
         self.emitter = None
         self.total_response = ""
@@ -182,14 +185,27 @@ class Pipe:
         if self.valves.USE_CODE_INTERPRETER:
             self.TOOL["code_interpreter"] = self._code_interpreter
             self.prompt_templates["code_interpreter"] = self.CODE_INTERPRETER_PROMPT
+        else:
+            if "code_interpreter" in self.TOOL.keys():
+                self.TOOL.pop("code_interpreter")
+            if "code_interpreter" in self.prompt_templates.keys():
+                self.prompt_templates.pop("code_interpreter")
         if self.valves.USE_WEB_SEARCH:
             self.TOOL["web_search"] = self._web_search
             self.prompt_templates["web_search"] = self.WEB_SEARCH_PROMPT
-            self.replace_tags["web_search"] = "Querying"
+        else:
+            if "web_search" in self.TOOL.keys():
+                self.TOOL.pop("web_search")
+            if "web_search" in self.prompt_templates.keys():
+                self.prompt_templates.pop("web_search")
         if self.valves.USE_KNOWLEDGE_SEARCH:
             self.TOOL["knowledge_search"] = self._knowledge_search
             self.prompt_templates["knowledge_search"] = self.KNOWLEDGE_SEARCH_PROMPT
-            self.replace_tags["knowledge_search"] = "Querying"
+        else:
+            if "knowledge_search" in self.TOOL.keys():
+                self.TOOL.pop("knowledge_search")
+            if "knowledge_search" in self.prompt_templates.keys():
+                self.prompt_templates.pop("knowledge_search")
 
         return [
             {
@@ -290,6 +306,7 @@ class Pipe:
                                     yield res
                                     # Clean up
                                     if self.temp_content:
+                                        await asyncio.sleep(0.1)
                                         yield self.temp_content
                                         self.temp_content = ""
                                 self.total_response = self.total_response.lstrip("\n")
@@ -313,6 +330,7 @@ class Pipe:
                                         )
                                         user_proxy_reply += reply
                                         yield reply
+                                        await asyncio.sleep(0.1)
 
                                     messages.append(
                                         {
