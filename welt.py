@@ -768,9 +768,9 @@ class Pipe:
     def _set_system_prompt(self, messages):
         if len(self.prompt_templates) == 0:
             return ""
-        template_string = """#### Available Tools"""
+        template_string = """#### Available Tools\n"""
         for i, (name, prompt) in enumerate(self.prompt_templates.items()):
-            template_string += f"{i+1}. {prompt}\n"
+            template_string += f"\n{i+1}. {prompt}\n"
         template_string += self.GUIDE_PROMPT
         # Create a Jinja2 Template object
         template = Template(template_string)
