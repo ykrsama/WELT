@@ -41,7 +41,7 @@ from open_webui.models.knowledge import (
 )
 
 log = logging.getLogger(__name__)
-log.setLevel("DEBUG")
+log.setLevel("INFO")
 
 
 class ResultObject:
@@ -85,6 +85,7 @@ class Pipe:
         self.valves = self.Valves()
         self.data_prefix = "data:"
         self.max_loop = self.valves.MAX_LOOP  # Save money
+        self.session = requests.Session()
         self.CODE_INTERPRETER_PROMPT: str = """**Code Interpreter**:
    <code_interpreter type="code" lang="python">
    codes
@@ -302,19 +303,11 @@ class Pipe:
                                     self.total_response = ""
                                     # Call tools
                                     for tool in tools:
-                                        if tool["name"] == "knowledge_search": 
-                                            reply = self.TOOL[tool["name"]](
-                                                tool["attributes"], tool["content"]
-                                            )
-                                            user_proxy_reply += reply
-                                            yield reply
-                                    else:
-
-                                            reply = await self.TOOL[tool["name"]](
-                                                tool["attributes"], tool["content"]
-                                            )
-                                            user_proxy_reply += reply
-                                            yield reply
+                                        reply = await self.TOOL[tool["name"]](
+                                            tool["attributes"], tool["content"]
+                                        )
+                                        user_proxy_reply += reply
+                                        yield reply
 
                                     messages.append(
                                         {
@@ -552,7 +545,7 @@ class Pipe:
         key: str = "",
     ) -> Optional[list[list[float]]]:
         try:
-            r = requests.post(
+            r = session.post(
                 f"{url}/embeddings",
                 headers={
                     "Content-Type": "application/json",
@@ -570,7 +563,7 @@ class Pipe:
             print(e)
             return None
 
-    def _query_collection(
+    async def _query_collection(
         self, knowledge_name: str, query_keywords: str, top_k: int = 3
     ) -> list:
         """
@@ -596,11 +589,12 @@ class Pipe:
                     url=self.valves.DEEPSEEK_API_BASE_URL,
                     key=self.valves.DEEPSEEK_API_KEY,
                 )
-                embeddings = embeddings[0]
-                break
+                if embeddings:
+                    embeddings = embeddings[0] if isinstance(embeddings, list) else embeddings
+                    break
             except Exception as e:
                 log.error(f"Generating Embeddings attempt {i + 1} failed: {e}")
-                time.sleep(2)
+                await asyncio.sleep(2)
         if not embeddings:
             raise ValueError(f"Faild generating embeddings, could be a network fluctuation.")
         log.debug(f"Embeddings length: {len(embeddings)}")
@@ -654,7 +648,7 @@ class Pipe:
 
         return top_results
 
-    def _knowledge_search(self, attributes: dict, content: str) -> str:
+    async def _knowledge_search(self, attributes: dict, content: str) -> str:
         """
         Retrieve relevant information from a knowledge collection
         based on the provided query, and return the results.
@@ -680,7 +674,7 @@ class Pipe:
 
         # Retrieve relevant documents from the knowledge base
         try:
-            results = self._query_collection(collection, content)
+            results = await self._query_collection(collection, content)
 
             if not results:
                 return f"\n<details type=\"user_proxy\">\n<summary>Found nothing with query {content}.</summary>\n</details>\n"
