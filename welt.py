@@ -94,7 +94,6 @@ class Pipe:
    - The Python code you write can incorporate a wide array of libraries, handle data manipulation or visualization, perform API calls for web-related tasks, or tackle virtually any computational challenge. Use this flexibility to **think outside the box, craft elegant solutions, and harness Python's full potential**.
    - To use it, **you must enclose your code within one pair of `<code_interpreter type="code" lang="python">`, `</code_interpreter>` XML tags** and stop there and finish output. If you don't, the code won't execute.
    - NEVER use markdown code block or triple backticks with code_interpreter XML tags together, otherwize will break user's browser frontend.
-   - You CAN NOT use multiple lines of code_interpreter.
    - When coding, **always aim to print meaningful outputs** (e.g., results, tables, summaries, or visuals) to better interpret and verify the findings. Avoid relying on implicit outputs; prioritize explicit and clear print statements so the results are effectively communicated to the user.
    - No need to save plot, just show it.
    - If the results are unclear, unexpected, or require validation, refine the code and execute it again as needed. Always aim to deliver meaningful insights from the results, iterating if necessary.
@@ -119,9 +118,8 @@ class Pipe:
 """
         self.KNOWLEDGE_SEARCH_PROMPT: str = """**Knowledge Search**: `<knowledge_search collection="DarkSHINE_Simulation_Software">one query</knowledge_search>`
    - You have access to user's local and personal kowledge collections.
-   - To use it, **you must enclose your search query within** `<knowledge_search collection="DarkSHINE_Simulation_Software">`, `</knowledge_search>` **XML tags** and end here and finish output. Do NOT use triple backticks.
+   - To use it, **you must enclose your search query within** `<knowledge_search collection="DarkSHINE_Simulation_Software">`, `</knowledge_search>` **XML tags**. Do NOT use triple backticks.
    - In each knowledge_search XML tag, be concise and focused on composing high-quality search query, **avoiding unnecessary elaboration, commentary, or assumptions**.
-   - You CAN NOT use multiple lines of knowledge search.
    - **Only use one knowledge_search XML tags, only one query at one time.** Do not use multiple queries, this will cause error.
    - Available collections:
      - DarkSHINE_Simulation_Software: Source code of simulation program based on Geant4 and ROOT, characterized by detector of DarkSHINE experiment. **Must use English to query this collection**.
@@ -134,9 +132,8 @@ class Pipe:
 
 - Break down user's need and focus on one task at a time, do this round by round until you solve all the problems.
 - Analyze what's the next step to do in order to check off all the tasks. You can decide wether to use tool, or simply response to user (only when problem and no any unclear questions nor assumptions).
-- Use only one type of tool at a time, and stop right there. Because you need to wait for the tool execution. Just leave tasks to next round.
 - When you didn't get an answer and facing uncertainty, **DO NOT make ANY assumptions, NOR make up any reply**, NOR ask user for information**, you should **use tools again**  to investigate and dig every little problem, until everything is crystal clear with it's own reference.
-- If tool get's an error, or unsatisfying, please retry tools. No hurry to get final reply to user.
+- If tool get's an error, or with unsatisfying info, please retry tools.
 - All responses should be communicated in the chat's primary language, ensuring seamless understanding. If the chat is multilingual, default to English for clarity.
 """
 
@@ -158,6 +155,7 @@ class Pipe:
         self.emitter = None
         self.total_response = ""
         self.temp_content = ""  # Temporary string to hold accumulated content
+        self.immediate_stop = False
         self._init_knowledge()
 
     def _init_knowledge(self):
@@ -281,8 +279,9 @@ class Pipe:
                             choice = data.get("choices", [{}])[0]
 
                             # 结束条件判断
-                            if choice.get("finish_reason"):
-                                res = self._filter_response_tag()
+                            if choice.get("finish_reason") or self.immediate_stop:
+                                self.immediate_stop = False
+                                res, tag_name= self._filter_response_tag()
                                 yield res
                                 # Clean up
                                 if self.temp_content:
@@ -349,9 +348,11 @@ class Pipe:
                                         await asyncio.sleep(0.1)
                                         yield "\n"
                                 if thinking_state["thinking"] != 0:
-                                    res = self._filter_response_tag(content)
+                                    res, tag_name = self._filter_response_tag(content)
                                     if res:
                                         yield res
+                                    if tag_name == "knowledge_search":
+                                        self.immediate_stop = True
                                 else:
                                     yield content
 
@@ -389,6 +390,7 @@ class Pipe:
             return delta
 
     def _filter_response_tag(self, content: str = "") -> str:
+        tag_name = None
         self.temp_content += content
         res = ""
         if "<" in self.temp_content:
@@ -421,7 +423,7 @@ class Pipe:
         else:
             res += self.temp_content
             self.temp_content = ""
-        return res
+        return res, tag_name
 
     def _format_error(self, status_code: int, error: bytes) -> str:
         # 如果 error 已经是字符串，则无需 decode
