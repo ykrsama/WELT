@@ -91,7 +91,7 @@ You have access to a user's code workspace, use `<code_interpreter>` XML tag to 
 code here
 </code_interpreter>
 
-#### Tag Attributes
+#### Tool Attributes
 
 - `type`: Specifies the action to perform.
    - `exec`: Execute the code immediately.
@@ -177,7 +177,7 @@ Assistant: ...
 
 <web_search url="www.googleapis.com">one query here</web_search>
 
-#### Tag Attributes
+#### Tool Attributes
 
 - `url`: available option:
   - `www.googleapis.com`: for general search.
@@ -198,7 +198,7 @@ Assistant: ...
 
 <knowledge_search collection="DarkSHINE_Simulation_Software">one query</knowledge_search>
 
-#### Tag Attributes
+#### Tool Attributes
   - `collection`: Available option:
      - `DarkSHINE_Simulation_Software`: Source code of simulation program based on Geant4 and ROOT, characterized by detector of DarkSHINE experiment. **Must use English to query this collection**.
      - `OpenWebUI_Backend`: Source code of backend of OpenWebUI, an extensible, self-hosted AI interface.
@@ -321,22 +321,52 @@ Assistant: ...
             model_id = body["model"].split(".", 1)[-1]
             payload = {**body, "model": model_id}
 
-            # 处理消息以防止连续的相同角色
             messages = payload["messages"]
+
+            # User proxy转移到User 角色
+            i = 0
+            while i < len(messages):
+                msg = messages[i]
+                if msg["role"] == "assistant":
+                    # 用正则匹配所有<user_proxy>内容
+                    user_proxy_matches = re.findall(r'<user_proxy>(.*?)</user_proxy>', msg["content"], flags=re.DOTALL)
+                    
+                    if user_proxy_matches:
+                        merged_user_content = '\n'.join([match.strip() for match in user_proxy_matches])
+
+                        # (1) 删除消息中的<user_proxy>标签（保留其他内容）
+                        clean_content = re.sub(
+                            r'<user_proxy>.*?</user_proxy>',
+                            '',
+                            msg["content"],
+                            flags=re.DOTALL
+                        ).strip()
+
+                        msg["content"] = clean_content
+                        
+                        new_user_msg = {
+                            "role": "user",
+                            "content": merged_user_content
+                        }
+                        messages.insert(i+1, new_user_msg)  # 在当前消息后插入
+                        i += 1
+
+                i += 1
+
+            # 处理消息以防止连续的相同角色
             i = 0
             while i < len(messages) - 1:
                 if messages[i]["role"] == messages[i + 1]["role"]:
-                    # 插入具有替代角色的占位符消息
-                    alternate_role = (
-                        "assistant" if messages[i]["role"] == "user" else "user"
-                    )
-                    messages.insert(
-                        i + 1,
-                        {"role": alternate_role, "content": "[Unfinished thinking]"},
-                    )
+                    # 合并相同角色的消息
+                    combined_content = messages[i]["content"] + "\n" + messages[i+1]["content"]
+                    messages[i]["content"] = combined_content
+                    messages.pop(i+1)
                 i += 1
 
             self._set_system_prompt(messages)
+
+            log.debug("Old messages:")
+            log.debug(messages)
 
             # yield json.dumps(payload, ensure_ascii=False)
 
