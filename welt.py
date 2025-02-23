@@ -106,7 +106,7 @@ code here
 #### Usage Instructions
 
 - The Python code you write can incorporate a wide array of libraries, handle data manipulation or visualization, perform API calls for web-related tasks, or tackle virtually any computational challenge. Use this flexibility to **think outside the box, craft elegant solutions, and harness Python's full potential**.
-- Output XML node like `<code_interpreter ...>...</code_interpreter>`, DO NOT put XML node in or out the markdown code block (triple backticks). 
+- Output XML node simply like `<code_interpreter ...>...</code_interpreter>`, DO NOT put XML node inside the markdown code block (```xml). 
 - When coding, **always aim to print meaningful outputs** (e.g., results, tables, summaries, or visuals) to better interpret and verify the findings. Avoid relying on implicit outputs; prioritize explicit and clear print statements so the results are effectively communicated to the user.
 - About code style:
    - Prefer object-oriented programming
@@ -188,7 +188,6 @@ Assistant: ...
 ####  Usage Instructions
 
 - Enclose only one query in one pair of `<web_search url="...">` `</web_search>` XML tags. You can use multiple lines of `<web_search>` XML tags for each query, to do parallel search.
-- DO NOT put XML node inside the markdown code block (triple backticks).
 - Err on the side of suggesting search queries if there is **any chance** they might provide useful or updated information.
 - Always prioritize providing actionable and broad query that maximize informational coverage.
 - In each web_search XML tag, be concise and focused on composing high-quality search query, **avoiding unnecessary elaboration, commentary, or assumptions**.
@@ -212,7 +211,6 @@ Assistant: ...
 
 - In each `<knowledge_search>` XML tag, be concise and focused on composing high-quality search query, **avoiding unnecessary elaboration, commentary, or assumptions**.
 - Enclose only one query in one pair of `<knowledge_search collection="...">` `</knowledge_search>` XML tags.
-- DO NOT put XML node inside the markdown code block (triple backticks).
 """
         self.GUIDE_PROMPT: str = """## Task:
 
@@ -226,6 +224,12 @@ Assistant: ...
 - If there are anything unclear, unexpected, or require validation, make it clear by iteratively use tool, until everything is clear with it's own reference (from tool). **DO NOT make ANY assumptions, DO NOT make-up any reply, DO NOT turn to user for information**.
 - Always aim to deliver meaningful insights, iterating if necessary.
 - All responses should be communicated in the chat's primary language, ensuring seamless understanding. If the chat is multilingual, default to English for clarity.
+- DO NOT put any tool inside any markdown code block. That means you can output:
+<tool ...>...</tool>
+But never output something like:
+```xml
+<tool ...>...</tool>
+```
 """
 
         self.TOOL = {}
@@ -440,13 +444,17 @@ Assistant: ...
                             self.current_tag_name = None
                             self.total_response = self.total_response.lstrip("\n")
                             tools = self._find_tool_usage(self.total_response)
-                            # 防止奇数反引号
-                            lines = self.total_response.split('\n')
-                            backtick_count = sum(1 for line in lines if line.startswith('```'))
-                            if backtick_count % 2 != 0:
-                                self.total_response += "\n```\n"
-                                await asyncio.sleep(0.1)
-                                yield "\n```\n"
+                            ## 防止奇数反引号
+                            #lines = self.total_response.split('\n')
+                            #backtick_count = sum(1 for line in lines if line.startswith('```'))
+                            #if backtick_count % 2 != 0:
+                            #    self.total_response += "\n```\n\n"
+                            #    await asyncio.sleep(0.1)
+                            #    yield "\n"
+                            #    await asyncio.sleep(0.1)
+                            #    yield "```"
+                            #    await asyncio.sleep(0.1)
+                            #    yield"\n\n"
                             # Move total_response to messages
                             messages.append(
                                 {
