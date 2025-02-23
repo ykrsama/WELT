@@ -389,136 +389,135 @@ Assistant: ...
             count = 0
             while do_pull and count < self.max_loop:
                 thinking_state = {"thinking": -1}  # 使用字典来存储thinking状态
-                async with httpx.AsyncClient(http2=True) as client:
-                    async with client.stream(
-                        "POST",
-                        f"{self.valves.DEEPSEEK_API_BASE_URL}/chat/completions",
-                        json=payload,
-                        headers=headers,
-                        timeout=300,
-                    ) as response:
-                        # 错误处理
-                        if response.status_code != 200:
-                            error = await response.aread()
-                            yield self._format_error(response.status_code, error)
+                async with self.client.stream(
+                    "POST",
+                    f"{self.valves.DEEPSEEK_API_BASE_URL}/chat/completions",
+                    json=payload,
+                    headers=headers,
+                    timeout=300,
+                ) as response:
+                    # 错误处理
+                    if response.status_code != 200:
+                        error = await response.aread()
+                        yield self._format_error(response.status_code, error)
+                        return
+
+                    # 流式处理响应
+                    async for line in response.aiter_lines():
+                        if not line.startswith(self.data_prefix):
+                            continue
+
+                        # 截取 JSON 字符串
+                        json_str = line[len(self.data_prefix) :]
+
+                        # 去除首尾空格后检查是否为结束标记
+                        if json_str.strip() == "[DONE]":
                             return
 
-                        # 流式处理响应
-                        async for line in response.aiter_lines():
-                            if not line.startswith(self.data_prefix):
-                                continue
-
-                            # 截取 JSON 字符串
-                            json_str = line[len(self.data_prefix) :]
-
-                            # 去除首尾空格后检查是否为结束标记
-                            if json_str.strip() == "[DONE]":
-                                return
-
-                            try:
-                                data = json.loads(json_str)
-                            except json.JSONDecodeError as e:
-                                # 格式化错误信息，这里传入错误类型和详细原因（包括出错内容和异常信息）
-                                error_detail = f"解析失败 - 内容：{json_str}，原因：{e}"
-                                yield self._format_error(
-                                    "JSONDecodeError", error_detail
-                                )
-                                return
-
-                            choice = data.get("choices", [{}])[0]
-
-                            # 结束条件判断
-                            if choice.get("finish_reason") or self.immediate_stop:
-                                if not self.immediate_stop:
-                                    res, tag_name= self._filter_response_tag()
-                                    yield res
-                                    # Clean up
-                                    if self.temp_content:
-                                        await asyncio.sleep(0.1)
-                                        yield self.temp_content
-                                        self.temp_content = ""
-                                self.immediate_stop = False
-                                self.current_tag_name = None
-                                self.total_response = self.total_response.lstrip("\n")
-                                tools = self._find_tool_usage(self.total_response)
-                                # if tool is not None:
-                                user_proxy_reply = ""
-                                if tools is not None:
-                                    do_pull = True
-                                    # Move total_response to messages
-                                    messages.append(
-                                        {
-                                            "role": "assistant",
-                                            "content": self.total_response,
-                                        }
-                                    )
-                                    self.total_response = ""
-                                    # Call tools
-                                    for tool in tools:
-                                        summary, content = await self.TOOL[tool["name"]](
-                                            tool["attributes"], tool["content"]
-                                        )
-                                        user_proxy_reply += f"{summary}\n\n{content}\n\n" 
-                                        await asyncio.sleep(0.1)
-                                        yield f'\n<details type=\"user_proxy\">\n<summary>{summary}</summary>\n{content}\n</details>\n'
-
-                                    messages.append(
-                                        {
-                                            "role": "user",
-                                            "content": user_proxy_reply,
-                                        }
-                                    )
-                                else:
-                                    do_pull = False
-                                break
-
-                            # 状态机处理
-                            state_output = await self._update_thinking_state(
-                                choice.get("delta", {}), thinking_state
+                        try:
+                            data = json.loads(json_str)
+                        except json.JSONDecodeError as e:
+                            # 格式化错误信息，这里传入错误类型和详细原因（包括出错内容和异常信息）
+                            error_detail = f"解析失败 - 内容：{json_str}，原因：{e}"
+                            yield self._format_error(
+                                "JSONDecodeError", error_detail
                             )
-                            if state_output:
-                                yield state_output  # 直接发送状态标记
-                                if state_output == "<think>":
+                            return
+
+                        choice = data.get("choices", [{}])[0]
+
+                        # 结束条件判断
+                        if choice.get("finish_reason") or self.immediate_stop:
+                            if not self.immediate_stop:
+                                res, tag_name= self._filter_response_tag()
+                                yield res
+                                # Clean up
+                                if self.temp_content:
+                                    await asyncio.sleep(0.1)
+                                    yield self.temp_content
+                                    self.temp_content = ""
+                            self.immediate_stop = False
+                            self.current_tag_name = None
+                            self.total_response = self.total_response.lstrip("\n")
+                            tools = self._find_tool_usage(self.total_response)
+                            # if tool is not None:
+                            user_proxy_reply = ""
+                            if tools is not None:
+                                do_pull = True
+                                # Move total_response to messages
+                                messages.append(
+                                    {
+                                        "role": "assistant",
+                                        "content": self.total_response,
+                                    }
+                                )
+                                self.total_response = ""
+                                # Call tools
+                                for tool in tools:
+                                    summary, content = await self.TOOL[tool["name"]](
+                                        tool["attributes"], tool["content"]
+                                    )
+                                    user_proxy_reply += f"{summary}\n\n{content}\n\n" 
+                                    await asyncio.sleep(0.1)
+                                    yield f'\n<details type=\"user_proxy\">\n<summary>{summary}</summary>\n{content}\n</details>\n'
+
+                                messages.append(
+                                    {
+                                        "role": "user",
+                                        "content": user_proxy_reply,
+                                    }
+                                )
+                            else:
+                                do_pull = False
+                            break
+
+                        # 状态机处理
+                        state_output = await self._update_thinking_state(
+                            choice.get("delta", {}), thinking_state
+                        )
+                        if state_output:
+                            yield state_output  # 直接发送状态标记
+                            if state_output == "<think>":
+                                await asyncio.sleep(0.1)
+                                yield "\n"
+
+                        # 内容处理并立即发送
+                        content = self._process_content(choice["delta"])
+                        if content:
+                            if content.startswith("<think>"):
+                                match = re.match(r"^<think>", content)
+                                if match:
+                                    content = re.sub(r"^<think>", "", content)
+                                    yield "<think>"
                                     await asyncio.sleep(0.1)
                                     yield "\n"
 
-                            # 内容处理并立即发送
-                            content = self._process_content(choice["delta"])
-                            if content:
-                                if content.startswith("<think>"):
-                                    match = re.match(r"^<think>", content)
-                                    if match:
-                                        content = re.sub(r"^<think>", "", content)
-                                        yield "<think>"
-                                        await asyncio.sleep(0.1)
-                                        yield "\n"
-
-                                elif content.startswith("</think>"):
-                                    match = re.match(r"^</think>", content)
-                                    if match:
-                                        content = re.sub(r"^</think>", "", content)
-                                        yield "</think>"
-                                        await asyncio.sleep(0.1)
-                                        yield "\n"
-                                if thinking_state["thinking"] != 0:
-                                    res, tag_name = self._filter_response_tag(content)
-                                    if tag_name == "knowledge_search":
-                                        self.immediate_stop = True
-                                    if tag_name == "web_search":
-                                        self.current_tag_name = tag_name
-                                    if tag_name is None and self.current_tag_name == "web_search":
-                                        if res:
-                                            self.immediate_stop = True
-                                            self.current_tag_name = None
-                                            self.temp_content = ""
-                                            res = ""
-                                            # clip total response:
-                                            self.total_response = self.total_response[:-len(content)]
+                            elif content.startswith("</think>"):
+                                match = re.match(r"^</think>", content)
+                                if match:
+                                    content = re.sub(r"^</think>", "", content)
+                                    yield "</think>"
+                                    await asyncio.sleep(0.1)
+                                    yield "\n"
+                            if thinking_state["thinking"] != 0:
+                                res, tag_name = self._filter_response_tag(content)
+                                if tag_name == "knowledge_search":
+                                    self.immediate_stop = True
+                                if tag_name == "web_search":
+                                    self.current_tag_name = tag_name
+                                if tag_name is None and self.current_tag_name == "web_search":
                                     if res:
-                                        yield res
-                                           
-                                else:
-                                    yield content
+                                        self.immediate_stop = True
+                                        self.current_tag_name = None
+                                        self.temp_content = ""
+                                        res = ""
+                                        # clip total response:
+                                        self.total_response = self.total_response[:-len(content)]
+                                if res:
+                                    yield res
+                                       
+                            else:
+                                yield content
                 log.debug(messages)
                 count += 1
         except Exception as e:
@@ -624,27 +623,26 @@ Assistant: ...
             google_search_url = f"https://www.googleapis.com/customsearch/v1?q={search_query}&key={self.valves.GOOGLE_PSE_API_KEY}&cx={self.valves.GOOGLE_PSE_ENGINE_ID}&num=5"
 
             try:
-                async with httpx.AsyncClient(http2=True) as client:
-                    response = await client.get(google_search_url)
-                    if response.status_code == 200:
-                        data = response.json()
-                        items = data.get("items", [])
-                        search_results = []
-                        urls = []
-                        for item in items:
-                            title = item.get("title", "No title")
-                            link = item.get("link", "No link")
-                            urls.append(link)
-                            snippet = item.get("snippet", "No snippet")
-                            search_results.append(f"**{title}**\n{snippet}\n{link}\n")
+                response = await self.client.get(google_search_url)
+                if response.status_code == 200:
+                    data = response.json()
+                    items = data.get("items", [])
+                    search_results = []
+                    urls = []
+                    for item in items:
+                        title = item.get("title", "No title")
+                        link = item.get("link", "No link")
+                        urls.append(link)
+                        snippet = item.get("snippet", "No snippet")
+                        search_results.append(f"**{title}**\n{snippet}\n{link}\n")
 
-                        if search_results:
-                            result = "\n\n".join(search_results)
-                            return f"Searched {len(urls)} sites", result
-                        else:
-                            return "No results found on Google", search_query
+                    if search_results:
+                        result = "\n\n".join(search_results)
+                        return f"Searched {len(urls)} sites", result
                     else:
-                        return f"Google search failed with status code {response.status_code}", search_query
+                        return "No results found on Google", search_query
+                else:
+                    return f"Google search failed with status code {response.status_code}", search_query
             except Exception as e:
                 return "Error during Google search", f"{str(e)}\nQuery: {search_query}"
 
@@ -653,41 +651,40 @@ Assistant: ...
             arxiv_search_url = f"http://export.arxiv.org/api/query?search_query=all:{search_query}&start=0&max_results=5"
 
             try:
-                async with httpx.AsyncClient(http2=True) as client:
-                    response = await client.get(arxiv_search_url)
-                    if response.status_code == 200:
-                        data = response.text
-                        # Extract entries using regex
-                        pattern = re.compile(r"<entry>(.*?)</entry>", re.DOTALL)
-                        matches = pattern.findall(data)
+                response = await self.client.get(arxiv_search_url)
+                if response.status_code == 200:
+                    data = response.text
+                    # Extract entries using regex
+                    pattern = re.compile(r"<entry>(.*?)</entry>", re.DOTALL)
+                    matches = pattern.findall(data)
 
-                        arxiv_results = []
-                        urls = []
-                        for match in matches:
-                            title_match = re.search(r"<title>(.*?)</title>", match)
-                            link_match = re.search(r"<id>(.*?)</id>", match)
-                            summary_match = re.search(
-                                r"<summary>(.*?)</summary>", match, re.DOTALL
+                    arxiv_results = []
+                    urls = []
+                    for match in matches:
+                        title_match = re.search(r"<title>(.*?)</title>", match)
+                        link_match = re.search(r"<id>(.*?)</id>", match)
+                        summary_match = re.search(
+                            r"<summary>(.*?)</summary>", match, re.DOTALL
+                        )
+
+                        if title_match and link_match and summary_match:
+                            title = title_match.group(1)
+                            link = link_match.group(1)
+                            urls.append(link)
+                            summary = summary_match.group(1).strip()
+                            arxiv_results.append(
+                                f"**{title}**\n{summary}\n{link}\n"
                             )
-
-                            if title_match and link_match and summary_match:
-                                title = title_match.group(1)
-                                link = link_match.group(1)
-                                urls.append(link)
-                                summary = summary_match.group(1).strip()
-                                arxiv_results.append(
-                                    f"**{title}**\n{summary}\n{link}\n"
-                                )
-                            else:
-                                log.error("Error parsing ArXiv entry.")
-
-                        if arxiv_results:
-                            result = "\n\n".join(arxiv_results)
-                            return f"Searched {len(urls)} papers", result
                         else:
-                            return "No results found on ArXiv", "search_query"
+                            log.error("Error parsing ArXiv entry.")
+
+                    if arxiv_results:
+                        result = "\n\n".join(arxiv_results)
+                        return f"Searched {len(urls)} papers", result
                     else:
-                        return f"ArXiv search failed with status code {response.status_code}", search_query
+                        return "No results found on ArXiv", "search_query"
+                else:
+                    return f"ArXiv search failed with status code {response.status_code}", search_query
             except Exception as e:
                 return "Error during ArXiv search", f"{str(e)}\nQuery: {search_query}"
 
