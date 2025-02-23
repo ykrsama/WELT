@@ -415,7 +415,6 @@ Assistant: ...
 
                             # 结束条件判断
                             if choice.get("finish_reason") or self.immediate_stop:
-                                self.immediate_stop = False
                                 if not self.immediate_stop:
                                     res, tag_name= self._filter_response_tag()
                                     yield res
@@ -424,6 +423,7 @@ Assistant: ...
                                         await asyncio.sleep(0.1)
                                         yield self.temp_content
                                         self.temp_content = ""
+                                self.immediate_stop = False
                                 self.total_response = self.total_response.lstrip("\n")
                                 tools = self._find_tool_usage(self.total_response)
                                 # if tool is not None:
