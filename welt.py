@@ -2,7 +2,7 @@
 title: Welt
 author: Xuliang
 description: OpenWebUI pipe function for Welt: Workflow Enhanced LLM with CoT
-version: 0.0.7
+version: 0.0.8
 licence: MIT
 """
 
@@ -218,14 +218,12 @@ Assistant: ...
 
 ## Guidelines:
 
-- You need to provide an overall plan to describe how to solve the problem.
+- You need to provide an overall plan to describe how to solve the problem. Don't call tools or using XML nodes during the planning part.
 - You need to analyse the chat history to find if there are any items left in the plans, which can be executed by tool. Call tool to do it now.
 - If the results are unclear, unexpected, or require validation, refine the search query or refine the code, and execute it again as needed. Always aim to deliver meaningful insights from the results, iterating if necessary.
 - If there are anything unclear, you should use tool, **DO NOT make ANY assumptions, NOR make up any reply**, NOR ask user for information**
 - Break down user's need and focus on one task at a time, do this round by round until you solve all the problems.
 - When you didn't get an answer and facing uncertainty, **DO NOT make ANY assumptions, NOR make up any reply**, NOR ask user for information**, you should **use tools again**  to investigate and dig every little problem, until everything is crystal clear with it's own reference.
-- Plan an summary should be replied in markdown format, don't call tools or using XML nodes during the planning part.
-- In the summary, use url or filename to point to the reference if there are any.
 - All responses should be communicated in the chat's primary language, ensuring seamless understanding. If the chat is multilingual, default to English for clarity.
 """
 
@@ -334,15 +332,15 @@ Assistant: ...
             while i < len(messages):
                 msg = messages[i]
                 if msg["role"] == "assistant":
-                    # 用正则匹配所有<user_proxy>内容
-                    user_proxy_matches = re.findall(r'<user_proxy>(.*?)</user_proxy>', msg["content"], flags=re.DOTALL)
+                    # 用正则匹配所有<details type="user_proxy">内容
+                    user_proxy_matches = re.findall(r'<details type="user_proxy">(.*?)</details>', msg["content"], flags=re.DOTALL)
                     
                     if user_proxy_matches:
                         merged_user_content = '\n'.join([match.strip() for match in user_proxy_matches])
 
                         # (1) 删除消息中的<user_proxy>标签（保留其他内容）
                         clean_content = re.sub(
-                            r'<user_proxy>.*?</user_proxy>',
+                            r'<details type="user_proxy">.*?</details>',
                             '',
                             msg["content"],
                             flags=re.DOTALL
@@ -556,27 +554,23 @@ Assistant: ...
                     or "<knowledge_search" in self.temp_content
                 ):
                     pattern = re.compile(
-                        r"<(web_search|knowledge_search)\s*([^>]*)>(.*?)</\1>",
+                        r"(?:^|\n)<(web_search|knowledge_search)\s*([^>]*)>(.*?)</\1>",
                         re.DOTALL,
                     )
                     # Find all matches in the self.temp_content
-                    matches = pattern.findall(self.temp_content)
-                    if matches:
-                        match = matches[0]
-                        tag_name = match[0]
-                        attributes_str = match[1]
-                        tag_content = match[2].strip()
+                    match = pattern.search(self.temp_content)
+                    if match:
+                        tag_name = match.group(1)
+                        attributes_str = match.group(2)
+                        tag_content = match.group(3).strip()
                         summary = self.replace_tags[tag_name] + " " + tag_content + " in " + attributes_str
-                        res += f'\n<details type="{tag_name}">\n<summary>{summary}</summary>\n{tag_content}\n</details>'
-                        self.temp_content = re.sub(pattern, "", self.temp_content)
-                        if self.temp_content:
-                            res += self.temp_content
-                            self.temp_content = ""
+                        res = self.temp_content[:match.start()] + f'\n<details type="{tag_name}">\n<summary>{summary}</summary>\n{tag_content}\n</details>'
+                        self.temp_content = self.temp_content[match.end():]
                 else:
-                    res += self.temp_content
+                    res = self.temp_content
                     self.temp_content = ""
         else:
-            res += self.temp_content
+            res = self.temp_content
             self.temp_content = ""
         return res, tag_name
 
@@ -639,11 +633,11 @@ Assistant: ...
                             result += "\n</details>\n"
                             return result
                         else:
-                            return f'\n<details type=\"user_proxy\">\n<summary>No results found on Google</summary>\n</details>\n'
+                            return f'\n<details type=\"user_proxy\">\n<summary>No results found on Google</summary>\n{search_query}\n</details>\n'
                     else:
-                        return f'\n<details type=\"user_proxy\">\n<summary>Google search failed with status code {response.status_code}</summary>\n</details>\n'
+                        return f'\n<details type=\"user_proxy\">\n<summary>Google search failed with status code {response.status_code}</summary>\n{search_query}\n</details>\n'
             except Exception as e:
-                return f'\n<details type=\"user_proxy\">\n<summary>Error during Google search</summary>\n{str(e)}\n</details>\n'
+                return f'\n<details type=\"user_proxy\">\n<summary>Error during Google search</summary>\n{str(e)}\nQuery: {search_query}\n</details>\n'
 
         # Handle ArXiv search
         if url == "arxiv.org" and search_query:
@@ -684,13 +678,13 @@ Assistant: ...
                             result += "\n</details>\n"
                             return result
                         else:
-                            return f'\n<details type=\"user_proxy\">\n<summary>No results found on ArXiv</summary>\n</details>\n'
+                            return f'\n<details type=\"user_proxy\">\n<summary>No results found on ArXiv</summary>\n{search_query}\n</details>\n'
                     else:
-                        return f'\n<details type=\"user_proxy\">\n<summary>ArXiv search failed with status code {response.status_code}</summary>\n</details>\n'
+                        return f'\n<details type=\"user_proxy\">\n<summary>ArXiv search failed with status code {response.status_code}</summary>\n{search_query}\n</details>\n'
             except Exception as e:
-                return f'\n<details type=\"user_proxy\">\n<summary>Error during ArXiv search</summary>\n{str(e)}\n</details>\n'
+                return f'\n<details type=\"user_proxy\">\n<summary>Error during ArXiv search</summary>\n{str(e)}\nQuery: {search_query}\n</details>\n'
 
-        return f'\n<details type=\"user_proxy\">\n<summary>Invalid search source or query</summary>\n</details>\n'
+        return f'\n<details type=\"user_proxy\">\n<summary>Invalid search source or query</summary>\nSearch source:\n{url}\nQuery:{search_query}\n</details>\n'
 
     async def _code_interpreter(self, attributes: dict, content: str) -> str:
         return "done"
@@ -832,10 +826,10 @@ Assistant: ...
             results = await self._query_collection(collection, content)
 
             if not results:
-                return f"\n<details type=\"user_proxy\">\n<summary>Found nothing with query {content}.</summary>\n</details>\n"
+                return f"\n<details type=\"user_proxy\">\n<summary>Found nothing about {content}</summary>\nCollection: {collection}\n</details>\n"
 
         except Exception as e:
-            return f'\n<details type="user_proxy">\n<summary>Faild searching {content}</summary>\n{str(e)}\n</details>\n'
+            return f'\n<details type="user_proxy">\n<summary>Faild searching {content}</summary>\n{str(e)}\nCollection: {collection}\n</details>\n'
 
         try:
             # Format the results for output
@@ -865,7 +859,7 @@ Assistant: ...
         tools = []
         # Define the regex pattern to match the XML tags
         pattern = re.compile(
-            r"<(code_interpreter|web_search|knowledge_search)\s*([^>]*)>(.*?)</\1>",
+            r"(?:^|\n)<(code_interpreter|web_search|knowledge_search)\s*([^>]*)>(.*?)</\1>",
             re.DOTALL,
         )
 
