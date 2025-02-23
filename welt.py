@@ -176,18 +176,18 @@ Assistant: ...
 
 **Calling Web Search Tool:**
 
-<web_search url="www.googleapis.com">first query here</web_search>
-<web_search url="www.googleapis.com">second query here</web_search>
+<web_search engine="google">first query here</web_search>
+<web_search engine="google">second query here</web_search>
 
 #### Tool Attributes
 
-- `url`: available option:
-  - `www.googleapis.com`: for general search.
-  - `arxiv.org`: for academic paper research. Always use english keywords for arxiv.
+- `engine`: available option:
+  - `google`: Search on google.
+  - `arxiv`: Always use english keywords for arxiv.
 
 ####  Usage Instructions
 
-- Enclose only one query in one pair of `<web_search url="...">` `</web_search>` XML tags. You can use multiple lines of `<web_search>` XML tags for each query, to do parallel search.
+- Enclose only one query in one pair of `<web_search engine="...">` `</web_search>` XML tags. You can use multiple lines of `<web_search>` XML tags for each query, to do parallel search.
 - Err on the side of suggesting search queries if there is **any chance** they might provide useful or updated information.
 - Always prioritize providing actionable and broad query that maximize informational coverage.
 - In each web_search XML tag, be concise and focused on composing high-quality search query, **avoiding unnecessary elaboration, commentary, or assumptions**.
@@ -625,11 +625,11 @@ But never output something like:
         if not search_query:
             return "No search query provided", ""
 
-        url = attributes.get("url", "")
+        engine = attributes.get("engine", "")
 
         # Handle Google Custom Search
         if (
-            url == "www.googleapis.com"
+            engine == "google"
             and self.valves.GOOGLE_PSE_API_KEY
             and self.valves.GOOGLE_PSE_ENGINE_ID
         ):
@@ -661,7 +661,7 @@ But never output something like:
                 return "Error during Google search", f"{str(e)}\nQuery: {search_query}"
 
         # Handle ArXiv search
-        if url == "arxiv.org" and search_query:
+        if engine == "arxiv":
             arxiv_search_url = f"http://export.arxiv.org/api/query?search_query=all:{search_query}&start=0&max_results=5"
 
             try:
@@ -702,7 +702,7 @@ But never output something like:
             except Exception as e:
                 return "Error during ArXiv search", f"{str(e)}\nQuery: {search_query}"
 
-        return "Invalid search source or query", f"Search source: {url}\nQuery:{search_query}"
+        return "Invalid search source or query", f"Search engine: {engine}\nQuery:{search_query}"
 
     async def _code_interpreter(self, attributes: dict, content: str) -> Tuple[str, str]:
         return "Done", ""
