@@ -440,24 +440,25 @@ Assistant: ...
                             self.current_tag_name = None
                             self.total_response = self.total_response.lstrip("\n")
                             tools = self._find_tool_usage(self.total_response)
-                            # 防止奇书反引号
-                            lines = messages[-1]["content"].split('\n')
-                            backtip_count = sum(1 for line in lines if line.startswith('```'))
-                            if backtip_count % 2 != 0:
-                                messages[-1]["content"] += "\n```\n"
-                            # if tool is not None:
-                            user_proxy_reply = ""
+                            # 防止奇数反引号
+                            lines = self.total_response.split('\n')
+                            backtick_count = sum(1 for line in lines if line.startswith('```'))
+                            if backtick_count % 2 != 0:
+                                self.total_response += "\n```\n"
+                                await asyncio.sleep(0.1)
+                                yield "\n```\n"
+                            # Move total_response to messages
+                            messages.append(
+                                {
+                                    "role": "assistant",
+                                    "content": self.total_response,
+                                }
+                            )
+                            self.total_response = ""
                             if tools is not None:
                                 do_pull = True
-                                # Move total_response to messages
-                                messages.append(
-                                    {
-                                        "role": "assistant",
-                                        "content": self.total_response,
-                                    }
-                                )
-                                self.total_response = ""
                                 # Call tools
+                                user_proxy_reply = ""
                                 for tool in tools:
                                     summary, content = await self.TOOL[tool["name"]](
                                         tool["attributes"], tool["content"]
