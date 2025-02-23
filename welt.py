@@ -118,7 +118,7 @@ code here
 User: plot something
 Assistant: ...
 
-**Calling Code Intepreter**:
+**Calling Code Intepreter:**
 
 <code_interpreter type="exec" lang="python" filename="plot.py">
 # plotting code here
@@ -129,7 +129,7 @@ Assistant: ...
 User: Create and test a simple cmake project named HelloWorld
 Assistant: ...
 
-**Calling Code Intepreter**:
+**Calling Code Intepreter:**
 
 <code_interpreter type="save" lang="cmake" filename="HelloWorld/CMakeList.txt">
 ...
@@ -156,7 +156,7 @@ User: I have a existing file in `analysis.C`, with content
 please add a line `declareProperty("IsExample", m_IsExample = false);` after it.
 Assistant: ...
 
-**Calling Code Intepreter**:
+**Calling Code Intepreter:**
 
 <code_interpreter type="search_replace" lang="diff" filename="HelloWorld/src/main.cpp">
 <<<<<<< ORIGINAL
@@ -172,9 +172,12 @@ Assistant: ...
 """
         self.WEB_SEARCH_PROMPT: str = """Web Search
 
-- You have access to internet, use `<web_search>` XML tag to search the web for new information and references:
+- You have access to internet, use `<web_search>` XML tag to search the web for new information and references. Example:
 
-<web_search url="www.googleapis.com">one query here</web_search>
+**Calling Web Search Tool:**
+
+<web_search url="www.googleapis.com">first query here</web_search>
+<web_search url="www.googleapis.com">second query here</web_search>
 
 #### Tool Attributes
 
@@ -193,7 +196,9 @@ Assistant: ...
 """
         self.KNOWLEDGE_SEARCH_PROMPT: str = """Knowledge Search
 
-- You have access to user's database, use `<knowledge_search>` XML tag to search user's internal and personal documens:
+- You have access to user's database, use `<knowledge_search>` XML tag to search user's internal and personal documens. Example:
+
+**Calling Knowledge Search Tool:**
 
 <knowledge_search collection="DarkSHINE_Simulation_Software">one query</knowledge_search>
 
@@ -204,29 +209,31 @@ Assistant: ...
 
 #### Usage Insructions
 
-   - In each `<knowledge_search>` XML tag, be concise and focused on composing high-quality search query, **avoiding unnecessary elaboration, commentary, or assumptions**.
-   - Enclose only one query in one pair of `<knowledge_search collection="...">` `</knowledge_search>` XML tags.
+- In each `<knowledge_search>` XML tag, be concise and focused on composing high-quality search query, **avoiding unnecessary elaboration, commentary, or assumptions**.
+- Enclose only one query in one pair of `<knowledge_search collection="...">` `</knowledge_search>` XML tags.
 """
         self.GUIDE_PROMPT: str = """## Task:
 
-- You are a independent, patient, careful and accurate assistant, utilizing tools to help user. You analysis the chat history, decide and determine wether to use tool, or simply response to user. Available Tools: Code Interpreter, Web Search, or Knowledge Search.
+- You are a independent, patient, careful and accurate assistant, utilizing tools to help user. You analysis the chat history, decide and determine wether to use tool, or simply response to user. You can call tools by using xml node. Available Tools: Code Interpreter, Web Search, or Knowledge Search.
 
 ## Guidelines:
 
-- You need to provide an overall plan to describe how to solve the problem.- You need to analyse the chat history to find if there are any items left in the plans, which can be executed by tool. Call tool to do it now.
+- You need to provide an overall plan to describe how to solve the problem.
+- You need to analyse the chat history to find if there are any items left in the plans, which can be executed by tool. Call tool to do it now.
 - If the results are unclear, unexpected, or require validation, refine the search query or refine the code, and execute it again as needed. Always aim to deliver meaningful insights from the results, iterating if necessary.
 - If there are anything unclear, you should use tool, **DO NOT make ANY assumptions, NOR make up any reply**, NOR ask user for information**
 - Break down user's need and focus on one task at a time, do this round by round until you solve all the problems.
 - When you didn't get an answer and facing uncertainty, **DO NOT make ANY assumptions, NOR make up any reply**, NOR ask user for information**, you should **use tools again**  to investigate and dig every little problem, until everything is crystal clear with it's own reference.
-- Plan, summary and other non-tool stuff should output in markdown format, NOT be in XML node. Also don't call tools or output XML during the planning part.
+- Plan an summary should be replied in markdown format, don't call tools or using XML nodes during the planning part.
+- In the summary, use url or filename to point to the reference if there are any.
 - All responses should be communicated in the chat's primary language, ensuring seamless understanding. If the chat is multilingual, default to English for clarity.
 """
 
         self.TOOL = {}
         self.prompt_templates = {}
         self.replace_tags = {
-            "web_search": "Querying",
-            "knowledge_search": "Querying"
+            "web_search": "Searching",
+            "knowledge_search": "Searching"
         }
         # Global vars
         self.emitter = None
@@ -559,8 +566,8 @@ Assistant: ...
                         tag_name = match[0]
                         attributes_str = match[1]
                         tag_content = match[2].strip()
-                        summary = self.replace_tags[tag_name] + " " + tag_content 
-                        res += f'\n<details type="{tag_name}">\n<summary>{summary}</summary>\n{attributes_str}\n</details>'
+                        summary = self.replace_tags[tag_name] + " " + tag_content + " in " + attributes_str
+                        res += f'\n<details type="{tag_name}">\n<summary>{summary}</summary>\n{tag_content}\n</details>'
                         self.temp_content = re.sub(pattern, "", self.temp_content)
                         if self.temp_content:
                             res += self.temp_content
