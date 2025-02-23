@@ -1,8 +1,8 @@
 """
-title: WELT
+title: Welt
 author: Xuliang
-description: Workflow Enhanced LLM with CoT (q
-version: 1.2.10
+description: OpenWebUI pipe function for Welt: Workflow Enhanced LLM with CoT
+version: 0.0.7
 licence: MIT
 """
 
@@ -68,10 +68,6 @@ class Pipe:
         USE_CODE_INTERPRETER: bool = Field(default=True)
         USE_WEB_SEARCH: bool = Field(default=True)
         USE_KNOWLEDGE_SEARCH: bool = Field(default=True)
-        KNOWLEDGE_COLLECTIONS: str = Field(
-            default="DarkSHINE_Simulation_Software",
-            description="ID of knowledge collections, seperate by comma",
-        )
         EMBEDDING_BATCH_SIZE: int = Field(
             default=2000,
             description="Batch size for knowledge search",
@@ -86,55 +82,116 @@ class Pipe:
         self.data_prefix = "data:"
         self.max_loop = self.valves.MAX_LOOP  # Save moneya
         self.client = httpx.AsyncClient(http2=True)
-        self.CODE_INTERPRETER_PROMPT: str = """**Code Interpreter**:
-   <code_interpreter type="code" lang="python">
-   codes
-   </code_interpreter>
-   - You have access to a Python shell that runs directly in the user's browser, enabling fast execution of code for analysis, calculations, or problem-solving.
-   - The Python code you write can incorporate a wide array of libraries, handle data manipulation or visualization, perform API calls for web-related tasks, or tackle virtually any computational challenge. Use this flexibility to **think outside the box, craft elegant solutions, and harness Python's full potential**.
-   - To use it, **you must enclose your code within one pair of `<code_interpreter type="code" lang="python">`, `</code_interpreter>` XML tags** and stop there and finish output. If you don't, the code won't execute.
-   - NEVER use markdown code block or triple backticks with code_interpreter XML tags together, otherwize will break user's browser frontend.
-   - When coding, **always aim to print meaningful outputs** (e.g., results, tables, summaries, or visuals) to better interpret and verify the findings. Avoid relying on implicit outputs; prioritize explicit and clear print statements so the results are effectively communicated to the user.
-   - No need to save plot, just show it.
-   - If the results are unclear, unexpected, or require validation, refine the code and execute it again as needed. Always aim to deliver meaningful insights from the results, iterating if necessary.
-   - **If a path to an image, audio, or any file is provided in markdown format in the output, ALWAYS regurgitate word for word, explicitly display it as part of the response to ensure the user can access it easily, do NOT change it.**
-   - About code style:
-      - Prefer object-oriented programming
-      - Prefer arguments with default value than hard coded
-      - For potentially time-comsuming code, e.g. loading file with unknown size, use argument to control the running scale, and defaulty run on small scale test.
-"""
-        self.WEB_SEARCH_PROMPT: str = """**Web Search**: `<web_search url="www.googleapis.com">one query</web_search>`
-   - You have access to web search, and no need to bother API keys because user can handle by themselves in this tool.
-   - To use it, **you must enclose your search query within** `<web_search url="www.googleapis.com">`, `</web_search>` **XML tags**. Do NOT use triple backticks.
-   - Err on the side of suggesting search queries if there is **any chance** they might provide useful or updated information.
-   - Always prioritize providing actionable and broad query that maximize informational coverage.
-   - In each web_search XML tag, be concise and focused on composing high-quality search query, **avoiding unnecessary elaboration, commentary, or assumptions**.
-   - You can use multiple lines of web_search XML tag to do parallel search.
-   - Available urls:
-     - www.googleapis.com: for general search.
-     - arxiv.org: for academic paper research. Always use english keywords for arxiv.
-   - If no valid search result, maybe causing by network issue, please retry.
-   - **The date today is: {{CURRENT_DATE}}**. So you can search for web to get information up do date {{CURRENT_DATE}}.
-"""
-        self.KNOWLEDGE_SEARCH_PROMPT: str = """**Knowledge Search**: `<knowledge_search collection="DarkSHINE_Simulation_Software">one query</knowledge_search>`
-   - You have access to user's local and personal kowledge collections.
-   - To use it, **you must enclose your search query within** `<knowledge_search collection="DarkSHINE_Simulation_Software">`, `</knowledge_search>` **XML tags**. Do NOT use triple backticks.
-   - In each knowledge_search XML tag, be concise and focused on composing high-quality search query, **avoiding unnecessary elaboration, commentary, or assumptions**.
-   - **Only use one knowledge_search XML tags, only one query at one time.** Do not use multiple queries, this will cause error.
-   - Available collections:
-     - DarkSHINE_Simulation_Software: Source code of simulation program based on Geant4 and ROOT, characterized by detector of DarkSHINE experiment. **Must use English to query this collection**.
-"""
-        self.GUIDE_PROMPT: str = """#### Task:
+        self.CODE_INTERPRETER_PROMPT: str = """Code Interpreter
 
-- You are a independent, patient, careful and accurate assistant, utilizing tools to help user. Available Tools: Code Interpreter, Web Search, or Knowledge Search.
 
-#### Guidelines:
+You have access to a user's code workspace, use `<code_interpreter>` XML tag to execute or save code to do analysis, calculations, or problem-solving. Here's how it works:
 
-- First, you provide an overall plan to describe how to solve the problem. Please don't use XML tags during this part.
-- Second, break down user's need and focus on one task at a time, do this round by round until you solve all the problems.
-- Third, analyze what's the next step to do in order to check off all the tasks. You can decide wether to use tool, or simply response to user (only when problem and no any unclear questions nor assumptions).
+<code_interpreter type="exec" lang="python" filename="">
+code here
+</code_interpreter>
+
+#### Tag Attributes
+
+- `type`: Specifies the action to perform.
+   - `exec`: Execute the code immediately.
+      - Supported languages: `python`, `root`, `bash`
+   - `save`: Save the code to the user's workspace.
+      - Supports any programming language.
+
+- `filename`: The file path where the code will be saved.  
+   - Must be **relative to the user's workspace base directory**.  
+   - Do not use paths relative to subdirectory.
+
+#### Usage Instructions
+
+- The Python code you write can incorporate a wide array of libraries, handle data manipulation or visualization, perform API calls for web-related tasks, or tackle virtually any computational challenge. Use this flexibility to **think outside the box, craft elegant solutions, and harness Python's full potential**.
+- NEVER use markdown code block or triple backticks with code_interpreter XML tags together, otherwize will break user's browser frontend.
+- When coding, **always aim to print meaningful outputs** (e.g., results, tables, summaries, or visuals) to better interpret and verify the findings. Avoid relying on implicit outputs; prioritize explicit and clear print statements so the results are effectively communicated to the user.
+- About code style:
+   - Prefer object-oriented programming
+   - Prefer arguments with default value than hard coded
+   - For potentially time-comsuming code, e.g. loading file with unknown size, use argument to control the running scale, and defaulty run on small scale test.
+
+#### Example 1
+
+User: plot something
+Assistant: ...
+......
+<code_interpreter type="exec" lang="python" filename="plot.py">
+# plotting code here
+</code_interpreter>
+
+#### Example 2:
+
+User: Create and test a simple cmake project named HelloWorld
+Assistant: ...
+......
+<code_interpreter type="save" lang="cmake" filename="HelloWorld/CMakeList.txt">
+...
+</code_interpreter>
+<code_interpreter type="save" lang="c++" filename="HelloWorld/src/main.cpp">
+...
+</code_interpreter>
+<code_interpreter type="exec" lang="bash" filename="HelloWorld/build_and_test.sh">
+# assume run in parent directory of filename
+mkdir -p build
+cd build
+cmake ..
+make
+./MyExecutable
+</code_interpreter>
+
+"""
+        self.WEB_SEARCH_PROMPT: str = """Web Search
+
+- You have access to internet, use `<web_search>` XML tag to search the web for new information and references:
+
+<web_search url="www.googleapis.com">one query here</web_search>
+
+#### Tag Attributes
+
+- `url`: available option:
+  - `www.googleapis.com`: for general search.
+  - `arxiv.org`: for academic paper research. Always use english keywords for arxiv.
+
+####  Usage Instructions
+
+- no need to bother API keys because user can handle by themselves in this tool.
+- Enclose only one query in one pair of `<web_search url="...">` `</web_search>` XML tags. You can use multiple lines of `<web_search>` XML tags for each query, to do parallel search.
+- Err on the side of suggesting search queries if there is **any chance** they might provide useful or updated information.
+- Always prioritize providing actionable and broad query that maximize informational coverage.
+- In each web_search XML tag, be concise and focused on composing high-quality search query, **avoiding unnecessary elaboration, commentary, or assumptions**.
+- **The date today is: {{CURRENT_DATE}}**. So you can search for web to get information up do date {{CURRENT_DATE}}.
+"""
+        self.KNOWLEDGE_SEARCH_PROMPT: str = """Knowledge Search
+
+- You have access to user's database, use `<knowledge_search>` XML tag to search user's internal and personal documens:
+
+<knowledge_search collection="DarkSHINE_Simulation_Software">one query</knowledge_search>
+
+#### Tag Attributes
+  - `collection`: Available option:
+     - `DarkSHINE_Simulation_Software`: Source code of simulation program based on Geant4 and ROOT, characterized by detector of DarkSHINE experiment. **Must use English to query this collection**.
+     - `OpenWebUI_Backend`: Source code of backend of OpenWebUI, an extensible, self-hosted AI interface.
+
+#### Usage Insructions
+
+   - In each `<knowledge_search>` XML tag, be concise and focused on composing high-quality search query, **avoiding unnecessary elaboration, commentary, or assumptions**.
+   - Enclose only one query in one pair of `<knowledge_search collection="...">` `</knowledge_search>` XML tags.
+"""
+        self.GUIDE_PROMPT: str = """## Task:
+
+- You are a independent, patient, careful and accurate assistant, utilizing tools to help user. You analysis the chat history, decide and determine wether to use tool, or simply response to user. Available Tools: Code Interpreter, Web Search, or Knowledge Search.
+
+## Guidelines:
+
+- You need to provide an overall plan to describe how to solve the problem. Please don't use XML tags during the planning part.
+- You need to analyse the chat history to find if there are any items left in the plans, which can be executed by tool. Use tool to do it now.
+- If the results are unclear, unexpected, or require validation, refine the search query or refine the code, and execute it again as needed. Always aim to deliver meaningful insights from the results, iterating if necessary.
+- If there are anything unclear, you should use tool,  **DO NOT make ANY assumptions, NOR make up any reply**, NOR ask user for information**
+- Break down user's need and focus on one task at a time, do this round by round until you solve all the problems.
 - When you didn't get an answer and facing uncertainty, **DO NOT make ANY assumptions, NOR make up any reply**, NOR ask user for information**, you should **use tools again**  to investigate and dig every little problem, until everything is crystal clear with it's own reference.
-- If tool get's an error, or with unsatisfying info, please retry tools.
 - All responses should be communicated in the chat's primary language, ensuring seamless understanding. If the chat is multilingual, default to English for clarity.
 """
 
@@ -706,13 +763,6 @@ class Pipe:
         if not collection:
             return f'\n<details type=\"user_proxy\">\n<summary>Error: No knowledge search collection specified.</summary>\n</details>\n'
 
-        # Check if the knowledge base is available in the configured ones
-        available_knowledge_cols = [
-            name.strip() for name in self.valves.KNOWLEDGE_COLLECTIONS.split(",")
-        ]
-        if collection not in available_knowledge_cols:
-            return f'\n<details type=\"user_proxy\">\n<summary>Error: Collection {collection} is not available.</summary>\n</details>\n'
-
         # Retrieve relevant documents from the knowledge base
         try:
             results = await self._query_collection(collection, content)
@@ -786,9 +836,9 @@ class Pipe:
     def _set_system_prompt(self, messages):
         if len(self.prompt_templates) == 0:
             return ""
-        template_string = """#### Available Tools\n"""
+        template_string = """## Available Tools\n"""
         for i, (name, prompt) in enumerate(self.prompt_templates.items()):
-            template_string += f"\n{i+1}. {prompt}\n"
+            template_string += f"\n### {i+1}. {prompt}\n"
         template_string += self.GUIDE_PROMPT
         # Create a Jinja2 Template object
         template = Template(template_string)
