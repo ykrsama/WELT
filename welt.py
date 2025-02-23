@@ -101,13 +101,12 @@ code here
    - `search_replace`: search keyword and replace
 
 - `filename`: The file path where the code will be saved.  
-   - Must be **relative to the user's workspace base directory**.  
-   - Do not use paths relative to subdirectory.
+   - Must be **relative to the user's workspace base directory**, do not use paths relative to subdirectory.
 
 #### Usage Instructions
 
 - The Python code you write can incorporate a wide array of libraries, handle data manipulation or visualization, perform API calls for web-related tasks, or tackle virtually any computational challenge. Use this flexibility to **think outside the box, craft elegant solutions, and harness Python's full potential**.
-- NEVER use markdown code block or triple backticks with code_interpreter XML tags together, otherwize will break user's browser frontend.
+- Output XML node like `<code_interpreter ...>...</code_interpreter>`, DO NOT put XML node in or out the markdown code block (triple backticks). 
 - When coding, **always aim to print meaningful outputs** (e.g., results, tables, summaries, or visuals) to better interpret and verify the findings. Avoid relying on implicit outputs; prioritize explicit and clear print statements so the results are effectively communicated to the user.
 - About code style:
    - Prefer object-oriented programming
@@ -214,12 +213,12 @@ Assistant: ...
 
 ## Guidelines:
 
-- You need to provide an overall plan to describe how to solve the problem. Please don't use XML tags during the planning part.
-- You need to analyse the chat history to find if there are any items left in the plans, which can be executed by tool. Call tool to do it now.
+- You need to provide an overall plan to describe how to solve the problem.- You need to analyse the chat history to find if there are any items left in the plans, which can be executed by tool. Call tool to do it now.
 - If the results are unclear, unexpected, or require validation, refine the search query or refine the code, and execute it again as needed. Always aim to deliver meaningful insights from the results, iterating if necessary.
 - If there are anything unclear, you should use tool, **DO NOT make ANY assumptions, NOR make up any reply**, NOR ask user for information**
 - Break down user's need and focus on one task at a time, do this round by round until you solve all the problems.
 - When you didn't get an answer and facing uncertainty, **DO NOT make ANY assumptions, NOR make up any reply**, NOR ask user for information**, you should **use tools again**  to investigate and dig every little problem, until everything is crystal clear with it's own reference.
+- Plan, summary and other non-tool stuff should output in markdown format, NOT be in XML node. Also don't call tools or output XML during the planning part.
 - All responses should be communicated in the chat's primary language, ensuring seamless understanding. If the chat is multilingual, default to English for clarity.
 """
 
@@ -444,8 +443,8 @@ Assistant: ...
                                             tool["attributes"], tool["content"]
                                         )
                                         user_proxy_reply += reply
-                                        yield reply
                                         await asyncio.sleep(0.1)
+                                        yield reply
 
                                     messages.append(
                                         {
@@ -560,8 +559,8 @@ Assistant: ...
                         tag_name = match[0]
                         attributes_str = match[1]
                         tag_content = match[2].strip()
-                        summary = self.replace_tags[tag_name] + " " + attributes_str
-                        res += f'\n<details type="{tag_name}">\n<summary>{summary}</summary>\n{tag_content}\n</details>'
+                        summary = self.replace_tags[tag_name] + " " + tag_content 
+                        res += f'\n<details type="{tag_name}">\n<summary>{summary}</summary>\n{attributes_str}\n</details>'
                         self.temp_content = re.sub(pattern, "", self.temp_content)
                         if self.temp_content:
                             res += self.temp_content
