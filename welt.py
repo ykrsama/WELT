@@ -187,11 +187,12 @@ Assistant: ...
 
 ####  Usage Instructions
 
-- no need to bother API keys because user can handle by themselves in this tool.
 - Enclose only one query in one pair of `<web_search url="...">` `</web_search>` XML tags. You can use multiple lines of `<web_search>` XML tags for each query, to do parallel search.
+- DO NOT put XML node inside the markdown code block (triple backticks).
 - Err on the side of suggesting search queries if there is **any chance** they might provide useful or updated information.
 - Always prioritize providing actionable and broad query that maximize informational coverage.
 - In each web_search XML tag, be concise and focused on composing high-quality search query, **avoiding unnecessary elaboration, commentary, or assumptions**.
+- No need to bother API keys because user can handle by themselves in this tool.
 - **The date today is: {{CURRENT_DATE}}**. So you can search for web to get information up do date {{CURRENT_DATE}}.
 """
         self.KNOWLEDGE_SEARCH_PROMPT: str = """Knowledge Search
@@ -211,6 +212,7 @@ Assistant: ...
 
 - In each `<knowledge_search>` XML tag, be concise and focused on composing high-quality search query, **avoiding unnecessary elaboration, commentary, or assumptions**.
 - Enclose only one query in one pair of `<knowledge_search collection="...">` `</knowledge_search>` XML tags.
+- DO NOT put XML node inside the markdown code block (triple backticks).
 """
         self.GUIDE_PROMPT: str = """## Task:
 
@@ -218,12 +220,11 @@ Assistant: ...
 
 ## Guidelines:
 
-- You need to provide an overall plan to describe how to solve the problem. Don't call tools or using XML nodes during the planning part.
-- You need to analyse the chat history to find if there are any items left in the plans, which can be executed by tool. Call tool to do it now.
-- If the results are unclear, unexpected, or require validation, refine the search query or refine the code, and execute it again as needed. Always aim to deliver meaningful insights from the results, iterating if necessary.
-- If there are anything unclear, you should use tool, **DO NOT make ANY assumptions, NOR make up any reply**, NOR ask user for information**
-- Break down user's need and focus on one task at a time, do this round by round until you solve all the problems.
-- When you didn't get an answer and facing uncertainty, **DO NOT make ANY assumptions, NOR make up any reply**, NOR ask user for information**, you should **use tools again**  to investigate and dig every little problem, until everything is crystal clear with it's own reference.
+- Provide an overall plan in markdown to describe how to solve the problem. When planning, don't call tools, don't use XML tag.
+- Check the chat history to see if there are anything left that are waiting to be executed by tool. Call tool to solve it.
+- Check if all the tools is running succesfully, if not, solve it by refine and retry the tool.
+- If there are anything unclear, unexpected, or require validation, make it clear by iteratively use tool, until everything is clear with it's own reference (from tool). **DO NOT make ANY assumptions, DO NOT make-up any reply, DO NOT turn to user for information**.
+- Always aim to deliver meaningful insights, iterating if necessary.
 - All responses should be communicated in the chat's primary language, ensuring seamless understanding. If the chat is multilingual, default to English for clarity.
 """
 
@@ -338,11 +339,15 @@ Assistant: ...
                     if user_proxy_nodes:
                         user_contents = []
                         for user_proxy_node in user_proxy_nodes:
-                            user_proxy_text = user_proxy_node[0]
+                            user_proxy_text = str(user_proxy_node)
                             summary_node = re.search(r'<summary>(.*?)</summary>', user_proxy_text, flags=re.DOTALL)
-                            summary_text = summary_node.group(1).strip()
+                            if summary_node:
+                                summary_text = summary_node.group(1).strip()
+                            else:
+                                summary_text = ""
+                            user_proxy_text = re.sub(r'<summary>.*?</summary>', user_proxy_text, flags=re.DOTALL).strip()
                             user_contents.append(f"{summary_text}\n\n{user_proxy_text}")
-                        merged_user_contents = '\n\n'.join([match.strip() for match in user_proxy_nodes])
+                        merged_user_contents = '\n\n'.join(user_contents)
 
                         # (1) 删除消息中的<user_proxy>标签（保留其他内容）
                         clean_content = re.sub(
@@ -376,12 +381,13 @@ Assistant: ...
             self._set_system_prompt(messages)
 
             # yield json.dumps(payload, ensure_ascii=False)
+            log.debug("Old message:")
+            log.debug(messages)
 
             # 发起API请求
             do_pull = True
             count = 0
             while do_pull and count < self.max_loop:
-                log.debug(messages)
                 thinking_state = {"thinking": -1}  # 使用字典来存储thinking状态
                 async with httpx.AsyncClient(http2=True) as client:
                     async with client.stream(
@@ -513,7 +519,7 @@ Assistant: ...
                                            
                                 else:
                                     yield content
-
+                log.debug(messages)
                 count += 1
         except Exception as e:
             yield self._format_exception(e)
@@ -858,7 +864,7 @@ Assistant: ...
         tools = []
         # Define the regex pattern to match the XML tags
         pattern = re.compile(
-            r"^<(code_interpreter|web_search|knowledge_search)\s*([^>]*)>(.*?)</\1>",
+            r"<(code_interpreter|web_search|knowledge_search)\s*([^>]*)>(.*?)</\1>",
             re.DOTALL | re.MULTILINE,
         )
 
