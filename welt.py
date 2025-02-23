@@ -440,6 +440,11 @@ Assistant: ...
                             self.current_tag_name = None
                             self.total_response = self.total_response.lstrip("\n")
                             tools = self._find_tool_usage(self.total_response)
+                            # 防止奇书反引号
+                            lines = messages[-1]["content"].split('\n')
+                            backtip_count = sum(1 for line in lines if line.startswith('```'))
+                            if backtip_count % 2 != 0:
+                                messages[-1]["content"] += "\n```\n"
                             # if tool is not None:
                             user_proxy_reply = ""
                             if tools is not None:
@@ -611,7 +616,7 @@ Assistant: ...
         if not search_query:
             return "No search query provided", ""
 
-        url = attributes["url"]
+        url = attributes.get("url", "")
 
         # Handle Google Custom Search
         if (
