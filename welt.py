@@ -345,7 +345,7 @@ Assistant: ...
                                 summary_text = summary_node.group(1).strip()
                             else:
                                 summary_text = ""
-                            user_proxy_text = re.sub(r'<summary>.*?</summary>', user_proxy_text, flags=re.DOTALL).strip()
+                            user_proxy_text = re.sub(r'<summary>.*?</summary>', "",user_proxy_text, flags=re.DOTALL).strip()
                             user_contents.append(f"{summary_text}\n\n{user_proxy_text}")
                         merged_user_contents = '\n\n'.join(user_contents)
 
