@@ -13,7 +13,7 @@ import httpx
 import re
 import requests
 import time
-from typing import AsyncGenerator, Callable, Awaitable, Optional, List
+from typing import AsyncGenerator, Callable, Awaitable, Optional, List, Tuple
 from pydantic import BaseModel, Field
 import asyncio
 from jinja2 import Template
@@ -333,10 +333,16 @@ Assistant: ...
                 msg = messages[i]
                 if msg["role"] == "assistant":
                     # 用正则匹配所有<details type="user_proxy">内容
-                    user_proxy_matches = re.findall(r'<details type="user_proxy">(.*?)</details>', msg["content"], flags=re.DOTALL)
+                    user_proxy_nodes = re.findall(r'<details type="user_proxy">(.*?)</details>', msg["content"], flags=re.DOTALL)
                     
-                    if user_proxy_matches:
-                        merged_user_content = '\n'.join([match.strip() for match in user_proxy_matches])
+                    if user_proxy_nodes:
+                        user_contents = []
+                        for user_proxy_node in user_proxy_nodes:
+                            user_proxy_text = user_proxy_node[0]
+                            summary_node = re.search(r'<summary>(.*?)</summary>', user_proxy_text, flags=re.DOTALL)
+                            summary_text = summary_node.group(1).strip()
+                            user_contents.append(f"{summary_text}\n\n{user_proxy_text}")
+                        merged_user_contents = '\n\n'.join([match.strip() for match in user_proxy_nodes])
 
                         # (1) 删除消息中的<user_proxy>标签（保留其他内容）
                         clean_content = re.sub(
@@ -350,7 +356,7 @@ Assistant: ...
                         
                         new_user_msg = {
                             "role": "user",
-                            "content": merged_user_content
+                            "content": merged_user_contents
                         }
                         messages.insert(i+1, new_user_msg)  # 在当前消息后插入
                         i += 1
@@ -369,15 +375,13 @@ Assistant: ...
 
             self._set_system_prompt(messages)
 
-            log.debug("Old messages:")
-            log.debug(messages)
-
             # yield json.dumps(payload, ensure_ascii=False)
 
             # 发起API请求
             do_pull = True
             count = 0
             while do_pull and count < self.max_loop:
+                log.debug(messages)
                 thinking_state = {"thinking": -1}  # 使用字典来存储thinking状态
                 async with httpx.AsyncClient(http2=True) as client:
                     async with client.stream(
@@ -428,6 +432,7 @@ Assistant: ...
                                         yield self.temp_content
                                         self.temp_content = ""
                                 self.immediate_stop = False
+                                self.current_tag_name = None
                                 self.total_response = self.total_response.lstrip("\n")
                                 tools = self._find_tool_usage(self.total_response)
                                 # if tool is not None:
@@ -444,12 +449,12 @@ Assistant: ...
                                     self.total_response = ""
                                     # Call tools
                                     for tool in tools:
-                                        reply = await self.TOOL[tool["name"]](
+                                        summary, content = await self.TOOL[tool["name"]](
                                             tool["attributes"], tool["content"]
                                         )
-                                        user_proxy_reply += reply
+                                        user_proxy_reply += f"{summary}\n\n{content}\n\n" 
                                         await asyncio.sleep(0.1)
-                                        yield reply
+                                        yield f'\n<details type=\"user_proxy\">\n<summary>{summary}</summary>\n{content}\n</details>\n'
 
                                     messages.append(
                                         {
@@ -554,8 +559,8 @@ Assistant: ...
                     or "<knowledge_search" in self.temp_content
                 ):
                     pattern = re.compile(
-                        r"(?:^|\n)<(web_search|knowledge_search)\s*([^>]*)>(.*?)</\1>",
-                        re.DOTALL,
+                        r"^<(web_search|knowledge_search)\s*([^>]*)>(.*?)</\1>",
+                        re.DOTALL | re.MULTILINE,
                     )
                     # Find all matches in the self.temp_content
                     match = pattern.search(self.temp_content)
@@ -594,12 +599,12 @@ Assistant: ...
         err_type = type(e).__name__
         return json.dumps({"error": f"{err_type}: {str(e)}"}, ensure_ascii=False)
 
-    async def _web_search(self, attributes: dict, content: str) -> str:
+    async def _web_search(self, attributes: dict, content: str) -> Tuple[str, str]:
         # Extract the search query from the content
         search_query = content.strip()
 
         if not search_query:
-            return f'\n<details type=\"user_proxy\">\n<summary>No search query provided</summary>\n</details>\n'
+            return "No search query provided", ""
 
         url = attributes["url"]
 
@@ -628,16 +633,14 @@ Assistant: ...
                             search_results.append(f"**{title}**\n{snippet}\n{link}\n")
 
                         if search_results:
-                            result = f'\n<details type=\"user_proxy\">\n<summary>Searched {len(urls)} sites</summary>\n'
-                            result += "\n\n".join(search_results)
-                            result += "\n</details>\n"
-                            return result
+                            result = "\n\n".join(search_results)
+                            return f"Searched {len(urls)} sites", result
                         else:
-                            return f'\n<details type=\"user_proxy\">\n<summary>No results found on Google</summary>\n{search_query}\n</details>\n'
+                            return "No results found on Google", search_query
                     else:
-                        return f'\n<details type=\"user_proxy\">\n<summary>Google search failed with status code {response.status_code}</summary>\n{search_query}\n</details>\n'
+                        return f"Google search failed with status code {response.status_code}", search_query
             except Exception as e:
-                return f'\n<details type=\"user_proxy\">\n<summary>Error during Google search</summary>\n{str(e)}\nQuery: {search_query}\n</details>\n'
+                return "Error during Google search", f"{str(e)}\nQuery: {search_query}"
 
         # Handle ArXiv search
         if url == "arxiv.org" and search_query:
@@ -673,21 +676,19 @@ Assistant: ...
                                 log.error("Error parsing ArXiv entry.")
 
                         if arxiv_results:
-                            result = f'\n<details type=\"user_proxy\">\n<summary>Searched {len(urls)} papers</summary>\n'
-                            result += "\n\n".join(arxiv_results)
-                            result += "\n</details>\n"
-                            return result
+                            result = "\n\n".join(arxiv_results)
+                            return f"Searched {len(urls)} papers", result
                         else:
-                            return f'\n<details type=\"user_proxy\">\n<summary>No results found on ArXiv</summary>\n{search_query}\n</details>\n'
+                            return "No results found on ArXiv", "search_query"
                     else:
-                        return f'\n<details type=\"user_proxy\">\n<summary>ArXiv search failed with status code {response.status_code}</summary>\n{search_query}\n</details>\n'
+                        return f"ArXiv search failed with status code {response.status_code}", search_query
             except Exception as e:
-                return f'\n<details type=\"user_proxy\">\n<summary>Error during ArXiv search</summary>\n{str(e)}\nQuery: {search_query}\n</details>\n'
+                return "Error during ArXiv search", f"{str(e)}\nQuery: {search_query}"
 
-        return f'\n<details type=\"user_proxy\">\n<summary>Invalid search source or query</summary>\nSearch source:\n{url}\nQuery:{search_query}\n</details>\n'
+        return "Invalid search source or query", f"Search source: {url}\nQuery:{search_query}"
 
-    async def _code_interpreter(self, attributes: dict, content: str) -> str:
-        return "done"
+    async def _code_interpreter(self, attributes: dict, content: str) -> Tuple[str, str]:
+        return "Done", ""
 
     async def _generate_openai_batch_embeddings(
         self,
@@ -804,7 +805,7 @@ Assistant: ...
 
         return top_results
 
-    async def _knowledge_search(self, attributes: dict, content: str) -> str:
+    async def _knowledge_search(self, attributes: dict, content: str) -> Tuple[str, str]:
         """
         Retrieve relevant information from a knowledge collection
         based on the provided query, and return the results.
@@ -814,22 +815,22 @@ Assistant: ...
             content (str): The query to search for in the knowledge base.
 
         Returns:
-            str: The retrieved relevant content or an error message.
+            Tuple(str, str): The retrieved relevant content or an error message.
         """
         collection = attributes.get("collection", "")
         content = content.strip()
         if not collection:
-            return f'\n<details type=\"user_proxy\">\n<summary>Error: No knowledge search collection specified.</summary>\n</details>\n'
+            return "Error: No knowledge search collection specified", ""
 
         # Retrieve relevant documents from the knowledge base
         try:
             results = await self._query_collection(collection, content)
 
             if not results:
-                return f"\n<details type=\"user_proxy\">\n<summary>Found nothing about {content}</summary>\nCollection: {collection}\n</details>\n"
+                return f"Found nothing about {content}", f"Collection: {collection}"
 
         except Exception as e:
-            return f'\n<details type="user_proxy">\n<summary>Faild searching {content}</summary>\n{str(e)}\nCollection: {collection}\n</details>\n'
+            return f"Faild searching {content}", f"Collection: {collection}"
 
         try:
             # Format the results for output
@@ -848,19 +849,17 @@ Assistant: ...
                 formatted_results.append(
                     f"\n**Source**: {source}\n\n**Context**:\n\n{document}\n"
                 )
-            reply = f'\n<details type="user_proxy">\n<summary>Found {len(results)} results</summary>\n'
-            reply += "\n\n".join(formatted_results)
-            reply += "\n</details>\n"
-            return reply
+            reply = "\n\n".join(formatted_results)
+            return f"Found {len(results)} results", reply
         except Exception as e:
-            return f'\n<details type="user_proxy">\n<summary>Error during formatting result for {content}</summary>\n{str(e)}\n</details>\n'
+            return f"Error during formatting result for {content}", f"{str(e)}"
 
     def _find_tool_usage(self, content):
         tools = []
         # Define the regex pattern to match the XML tags
         pattern = re.compile(
-            r"(?:^|\n)<(code_interpreter|web_search|knowledge_search)\s*([^>]*)>(.*?)</\1>",
-            re.DOTALL,
+            r"^<(code_interpreter|web_search|knowledge_search)\s*([^>]*)>(.*?)</\1>",
+            re.DOTALL | re.MULTILINE,
         )
 
         # Find all matches in the content
