@@ -85,7 +85,7 @@ class Pipe:
         self.CODE_INTERPRETER_PROMPT: str = """Code Interpreter
 
 
-You have access to a user's code workspace, use `<code_interpreter>` XML tag to execute or save code to do analysis, calculations, or problem-solving. Here's how it works:
+You have access to a user's code workspace, use `<code_interpreter>` XML tag to write codes to do analysis, calculations, or problem-solving. Here's how it works:
 
 <code_interpreter type="exec" lang="python" filename="">
 code here
@@ -96,19 +96,20 @@ code here
 - `type`: Specifies the action to perform.
    - `exec`: Execute the code immediately.
       - Supported languages: `python`, `root`, `bash`
-   - `save`: Save the code to the user's workspace.
+   - `write`: Write and save the code to a file.
       - Supports any programming language.
    - `search_replace`: search keyword and replace
 
-- `filename`: The file path where the code will be saved.  
+- `filename`: The file path where the code will be written.  
    - Must be **relative to the user's workspace base directory**, do not use paths relative to subdirectory.
 
 #### Usage Instructions
 
 - The Python code you write can incorporate a wide array of libraries, handle data manipulation or visualization, perform API calls for web-related tasks, or tackle virtually any computational challenge. Use this flexibility to **think outside the box, craft elegant solutions, and harness Python's full potential**.
 - Output XML node simply like `<code_interpreter ...>...</code_interpreter>`, DO NOT put XML node inside the markdown code block (```xml). 
-- When coding, **always aim to print meaningful outputs** (e.g., results, tables, summaries, or visuals) to better interpret and verify the findings. Avoid relying on implicit outputs; prioritize explicit and clear print statements so the results are effectively communicated to the user.
-- About code style:
+- Coding style instruction:
+  - **Always aim to give meaningful outputs** (e.g., results, tables, summaries, or visuals) to better interpret and verify the findings. Avoid relying on implicit outputs; prioritize explicit and clear print statements so the results are effectively communicated to the user.
+   - When coding with matplotlib, use plt.show(). DO NOT use plt.savefig().
    - Prefer object-oriented programming
    - Prefer arguments with default value than hard coded
    - For potentially time-comsuming code, e.g. loading file with unknown size, use argument to control the running scale, and defaulty run on small scale test.
@@ -224,7 +225,7 @@ Assistant: ...
 - If there are anything unclear, unexpected, or require validation, make it clear by iteratively use tool, until everything is clear with it's own reference (from tool). **DO NOT make ANY assumptions, DO NOT make-up any reply, DO NOT turn to user for information**.
 - Always aim to deliver meaningful insights, iterating if necessary.
 - All responses should be communicated in the chat's primary language, ensuring seamless understanding. If the chat is multilingual, default to English for clarity.
-- DO NOT put any tool inside any markdown code block. That means you can output:
+- DO NOT put any tool inside or outside markdown code block. That means you can output:
 <tool ...>...</tool>
 But never output something like:
 ```xml
@@ -860,8 +861,9 @@ But never output something like:
                 if not isinstance(result.document, list) or not result.document:
                     continue
                 source = result.metadata[0]["source"]
+                source = source.replace("__", "/")
                 document = result.document[0]
-                document = "\n".join(["> " + line for line in document.splitlines()])               
+                document = "\n".join(["> " + line for line in document.splitlines()])
 
                 formatted_results.append(
                     f"\n**Source**: {source}\n\n**Context**:\n\n{document}\n"
