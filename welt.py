@@ -39,7 +39,7 @@ from open_webui.models.knowledge import (
     KnowledgeUserResponse,
     KnowledgeUserModel,
 )
-
+from hepai import HRModel
 log = logging.getLogger(__name__)
 log.setLevel("DEBUG")
 
@@ -84,8 +84,7 @@ class Pipe:
         self.client = httpx.AsyncClient(http2=True)
         self.CODE_INTERPRETER_PROMPT: str = """Code Interpreter
 
-
-You have access to a user's code workspace, use `<code_interpreter>` XML tag to write codes to do analysis, calculations, or problem-solving. Here's how it works:
+You have access to a user's {{OP_SYSTEM}} code workspace, use `<code_interpreter>` XML tag to write codes to do analysis, calculations, or problem-solving. Here's how it works:
 
 <code_interpreter type="exec" lang="python" filename="">
 code here
@@ -114,7 +113,9 @@ code here
    - Prefer arguments with default value than hard coded
    - For potentially time-comsuming code, e.g. loading file with unknown size, use argument to control the running scale, and defaulty run on small scale test.
 
-#### Example 1
+#### Examples
+
+---
 
 User: plot something
 Assistant: ...
@@ -125,7 +126,7 @@ Assistant: ...
 # plotting code here
 </code_interpreter>
 
-#### Example 2:
+---
 
 User: Create and test a simple cmake project named HelloWorld
 Assistant: ...
@@ -147,7 +148,7 @@ make
 ./MyExecutable
 </code_interpreter>
 
-#### Example 3:
+---
 
 User: I have a existing file in `analysis.C`, with content
 ```
@@ -169,6 +170,8 @@ Assistant: ...
         declareProperty("IsExample", m_IsExample = false);
 >>>>>>> UPDATED
 </code_interpreter>
+
+---
 
 """
         self.WEB_SEARCH_PROMPT: str = """Web Search
@@ -194,6 +197,7 @@ Assistant: ...
 - In each web_search XML tag, be concise and focused on composing high-quality search query, **avoiding unnecessary elaboration, commentary, or assumptions**.
 - No need to bother API keys because user can handle by themselves in this tool.
 - **The date today is: {{CURRENT_DATE}}**. So you can search for web to get information up do date {{CURRENT_DATE}}.
+
 """
         self.KNOWLEDGE_SEARCH_PROMPT: str = """Knowledge Search
 
@@ -231,6 +235,7 @@ But never output something like:
 ```xml
 <tool ...>...</tool>
 ```
+
 """
 
         self.TOOL = {}
@@ -246,6 +251,8 @@ But never output something like:
         self.current_tag_name = None
         self.immediate_stop = False
         self._init_knowledge()
+        self.code_worker = None
+        self.op_system = "Linux"  # code worker system
 
     def _init_knowledge(self):
         """
@@ -280,6 +287,7 @@ But never output something like:
         if self.valves.USE_CODE_INTERPRETER:
             self.TOOL["code_interpreter"] = self._code_interpreter
             self.prompt_templates["code_interpreter"] = self.CODE_INTERPRETER_PROMPT
+            self.init_code_worker()
         else:
             if "code_interpreter" in self.TOOL.keys():
                 self.TOOL.pop("code_interpreter")
@@ -516,11 +524,11 @@ But never output something like:
                                     yield "\n"
                             if thinking_state["thinking"] != 0:
                                 res, tag_name = self._filter_response_tag(content)
-                                if tag_name == "knowledge_search":
-                                    self.immediate_stop = True
-                                if tag_name == "web_search":
+                                #if tag_name == "knowledge_search":
+                                #    self.immediate_stop = True
+                                if tag_name in ["web_search","knowledge_search"]:
                                     self.current_tag_name = tag_name
-                                if tag_name is None and self.current_tag_name == "web_search":
+                                if tag_name is None and self.current_tag_name in ["web_search","knowledge_search"]:
                                     if res:
                                         self.immediate_stop = True
                                         self.current_tag_name = None
@@ -922,7 +930,7 @@ But never output something like:
         current_date = datetime.now()
         formatted_date = current_date.strftime("%Y-%m-%d")
         # Render the template with a list of items
-        context = {"CURRENT_DATE": formatted_date}
+        context = {"CURRENT_DATE": formatted_date, "OP_SYSTEM": self.op_system}
         result = template.render(**context)
         # Set system_prompt
         if messages[0]["role"] == "system":
@@ -933,4 +941,16 @@ But never output something like:
 
         log.debug("Current System Prompt:")
         log.debug(result)
+
+    # ===================
+    # Code Interpreter
+    # -------------------
+    def init_code_worker(self):
+        self.code_worker = HRModel.connect(
+            name="xuliang/code-worker-v2",
+            base_url="http://localhost:42899/apiv2",
+        )
+        funcs = self.code_worker.functions()  # Get all remote callable functions.
+        log.info(f"Remote callable funcs: {funcs}")
+        self.op_system = self.code_worker.inspect_system()
 
