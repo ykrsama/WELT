@@ -98,15 +98,6 @@ code here (DO NOT consider xml escaping, e.g. use `<`, DO NOT use `&lt;`)
       - Supported languages: `python`, `root`, `bash`
    - `write`: Write and save the code to a file.
       - Supports any programming language.
-   - `search_replace`: search keyword and replace.
-      - Be aware of the code indent.
-      - Use format:
-      <<<<<<< ORIGINAL
-      original code
-      =======
-      updated code
-      >>>>>>> UPDATED
-      - Analyse the code_interpreter content in chat history for the original code. Strictly follow the original line contents to avoid mismatch.
 
 - `filename`: The file path where the code will be written.  
    - Must be **relative to the user's workspace base directory**, do not use paths relative to subdirectory.
@@ -135,6 +126,15 @@ Assistant: ...
 
 ---
 
+User: Use ROOT to analyse something
+Assistant: ...
+**Calling Code Intepreter:**
+<code_interpreter type="exec" lang="root" filename="analysis.C">
+...
+</code_interpreter>
+
+---
+
 User: Create and test a simple cmake project named HelloWorld
 Assistant: ...
 **Calling Code Intepreter:**
@@ -151,39 +151,6 @@ cd build
 cmake ..
 make
 ./MyExecutable
-</code_interpreter>
-
----
-
-User: Use ROOT to analyse something ...
-Assistant: ...
-**Calling Code Intepreter:**
-<code_interpreter type="exec" lang="root" filename="analysis.C">
-...
-        declareProperty("IsSignalMC", m_IsSignalMC = 0);
-        declareProperty("Ecms", m_Ecms = ECMS);
-...
-</code_interpreter>
-User: Executed code: analysis.C
-...
-Assistant: ...
-User: Add a new property `IsExample` with default value `false`
-Assistant: ...
-**Calling Code Intepreter:**
-<code_interpreter type="search_replace" lang="diff" filename="analysis.C">
-<<<<<<< ORIGINAL
-        declareProperty("IsSignalMC", m_IsSignalMC = 0);
-        declareProperty("Ecms", m_Ecms = ECMS);
-=======
-        declareProperty("IsSignalMC", m_IsSignalMC = 0);
-        declareProperty("Ecms", m_Ecms = ECMS);
-        declareProperty("IsExample", m_IsExample = false);
->>>>>>> UPDATED
-</code_interpreter>
-User: 1. Updated `analysis.C`
-Assistant: Write bash script to test the updated code
-<code_interpreter type="exec" lang="bash" filename="analysis.sh">
-root -l -b -q analysis.C
 </code_interpreter>
 
 ---
