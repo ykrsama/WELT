@@ -88,7 +88,7 @@ class Pipe:
 You have access to a user's {{OP_SYSTEM}} code workspace, use `<code_interpreter>` XML tag to write codes to do analysis, calculations, or problem-solving. Here's how it works:
 
 <code_interpreter type="exec" lang="python" filename="">
-code here
+code here (DO NOT consider xml escaping, e.g. use `<`, DO NOT use `&lt;`)
 </code_interpreter>
 
 #### Tool Attributes
@@ -98,7 +98,15 @@ code here
       - Supported languages: `python`, `root`, `bash`
    - `write`: Write and save the code to a file.
       - Supports any programming language.
-   - `search_replace`: search keyword and replace
+   - `search_replace`: search keyword and replace.
+      - Be aware of the code indent.
+      - Use format:
+      <<<<<<< ORIGINAL
+      original code
+      =======
+      updated code
+      >>>>>>> UPDATED
+      - Analyse the code_interpreter content in chat history for the original code. Strictly follow the original line contents to avoid mismatch.
 
 - `filename`: The file path where the code will be written.  
    - Must be **relative to the user's workspace base directory**, do not use paths relative to subdirectory.
@@ -109,7 +117,7 @@ code here
 - Output XML node simply like `<code_interpreter ...>...</code_interpreter>`, DO NOT put XML node inside the markdown code block (```xml). 
 - Coding style instruction:
   - **Always aim to give meaningful outputs** (e.g., results, tables, summaries, or visuals) to better interpret and verify the findings. Avoid relying on implicit outputs; prioritize explicit and clear print statements so the results are effectively communicated to the user.
-   - When coding with matplotlib, use plt.show(). DO NOT use plt.savefig().
+   - Run in batch mode. Save figures to file.
    - Prefer object-oriented programming
    - Prefer arguments with default value than hard coded
    - For potentially time-comsuming code, e.g. loading file with unknown size, use argument to control the running scale, and defaulty run on small scale test.
@@ -120,21 +128,8 @@ code here
 
 User: plot something
 Assistant: ...
-
 **Calling Code Intepreter:**
-
 <code_interpreter type="exec" lang="python" filename="plot.py">
-# plotting code here
-</code_interpreter>
-
----
-
-User: plot something using ROOT
-Assistant: ...
-
-**Calling Code Intepreter:**
-
-<code_interpreter type="exec" lang="root" filename="plot.C">
 # plotting code here
 </code_interpreter>
 
@@ -142,9 +137,7 @@ Assistant: ...
 
 User: Create and test a simple cmake project named HelloWorld
 Assistant: ...
-
 **Calling Code Intepreter:**
-
 <code_interpreter type="save" lang="cmake" filename="HelloWorld/CMakeList.txt">
 ...
 </code_interpreter>
@@ -162,17 +155,22 @@ make
 
 ---
 
-User: I have a existing file in `analysis.C`, with content
-```
+User: Use ROOT to analyse something ...
+Assistant: ...
+**Calling Code Intepreter:**
+<code_interpreter type="exec" lang="root" filename="analysis.C">
+...
         declareProperty("IsSignalMC", m_IsSignalMC = 0);
         declareProperty("Ecms", m_Ecms = ECMS);
-```
-please add a line `declareProperty("IsExample", m_IsExample = false);` after it.
+...
+</code_interpreter>
+User: Executed code: analysis.C
+...
 Assistant: ...
-
+User: Add a new property `IsExample` with default value `false`
+Assistant: ...
 **Calling Code Intepreter:**
-
-<code_interpreter type="search_replace" lang="diff" filename="HelloWorld/src/main.cpp">
+<code_interpreter type="search_replace" lang="diff" filename="analysis.C">
 <<<<<<< ORIGINAL
         declareProperty("IsSignalMC", m_IsSignalMC = 0);
         declareProperty("Ecms", m_Ecms = ECMS);
@@ -181,6 +179,11 @@ Assistant: ...
         declareProperty("Ecms", m_Ecms = ECMS);
         declareProperty("IsExample", m_IsExample = false);
 >>>>>>> UPDATED
+</code_interpreter>
+User: 1. Updated `analysis.C`
+Assistant: Write bash script to test the updated code
+<code_interpreter type="exec" lang="bash" filename="analysis.sh">
+root -l -b -q analysis.C
 </code_interpreter>
 
 ---
@@ -235,7 +238,7 @@ Assistant: ...
 
 ## Guidelines:
 
-- Provide an overall plan in markdown to describe how to solve the problem. When planning, don't call tools, don't use XML tag.
+- Provide an overall plan in markdown to describe how to solve the problem. When planning, don't write code, don't call tools, don't use XML tag.
 - Check the chat history to see if there are anything left that are waiting to be executed by tool. Call tool to solve it.
 - Check if all the tools is running succesfully, if not, solve it by refine and retry the tool.
 - If there are anything unclear, unexpected, or require validation, make it clear by iteratively use tool, until everything is clear with it's own reference (from tool). **DO NOT make ANY assumptions, DO NOT make-up any reply, DO NOT turn to user for information**.
@@ -546,6 +549,8 @@ But never output something like:
                                 # if tag_name == "knowledge_search":
                                 #    self.immediate_stop = True
                                 # if tag_name in ["web_search","knowledge_search"]:
+                                if "</code_interpreter>" in self.total_response:
+                                    self.immediate_stop = True
                                 if tag_name:
                                     self.current_tag_name = tag_name
                                 if tag_name is None and self.current_tag_name:
@@ -772,7 +777,7 @@ But never output something like:
                         lang=lang,
                         timeout=300,
                     )
-                    return "Code executed", result
+                    return f"Executed code: {filename}", result
                 except Exception as e:
                     return f"Error executing {filename}", f"{str(e)}"
             elif lang == "bash":
@@ -792,7 +797,7 @@ But never output something like:
                 result = self.code_worker.write_code(
                     file_path=filename, content=content
                 )
-                return "File written", result
+                return f"Written file: {filename}", result
             except Exception as e:
                 return f"Error writing {filename}", f"{str(e)}"
 
@@ -814,11 +819,11 @@ But never output something like:
                     result = self.code_worker.search_replace(
                         file_path=filename, original=original, updated=updated
                     )
-                    return f"Search and replaced {filename}", result
+                    return f"Updated {filename}", result
                 except Exception as e:
                     return f"Error searching and replacing {filename}", f"{str(e)}"
             else:
-                return "Invalid search and replace format"
+                return "Invalid search and replace format", ""
         else:
             return "Invalid code interpreter type `{code_type}`", ""
 
