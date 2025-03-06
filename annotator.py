@@ -44,15 +44,15 @@ class CodeAnnotator:
             "Authorization": "Bearer YOUR_API_KEY"  # 根据实际配置修改
         }
 
-        #message_content=
-        
-        payload = {
-            "model": "code-annotator",
-            "messages": [{
-                "role": "system",
-                "content": """为了给以上代码添加详细注释，请先决定是否用Knowledge Search检索源码，然后基于函数实现代码，在以上代码中的类、函数的声明处添加注释。指引：
+        prompt_zh = """如果以上代码中的函数声明缺少对应的实现源码，请调用Knowledge Search检索源码。然后基于函数实现的源码，在以上代码中的类、函数的声明处，添加详细注释。如果以上代>码没有要添加注释的地方，请回复"Nothing to do."
 
-- 如果缺少函数实现的代码，请先根据函数名，用Knowledge Search检索源码。可以多次搜索直到找到全部函数的实现代码。
+检索源码指引：
+
+- 根据函数名，调用Knowledge Search检索源码。
+
+- 可以重复搜索直到找到全部函数的实现代码。
+
+添加注释指引：
 
 - 使用以下markdown代码块进行搜索和替换，用于添加注释:
 
@@ -64,11 +64,34 @@ updated content
 >>>>>>> UPDATED
 ```
 
-- 使用Doxygen风格的英文注释。
+- 使用Doxygen风格的注释。
 
-- 如果以上代码没有要添加注释的地方，请回复"Nothing to do."
+- 注意更新时源码必须保持一致，不能修改源码，只能添加注释。
 """
-            }, {
+
+        prompt_en = """If the function declarations in the above code lack corresponding implementation source code, please call Knowledge Search to retrieve the source code. Then, based on the implementation of the functions, add detailed comments at the declarations of classes and functions in the above code. If there is no need to add comments in the above code, please reply with "Nothing to do."
+
+Source Code Retrieval Guidelines:
+- Query with the function name for Knowledge Search.
+- You can perform repeated searches until you find all the implementation code for all functions.
+
+Comment Addition Guidelines:
+- Use the following markdown code block for search and replacement to add comments:
+```
+<<<<<<< ORIGINAL
+original content
+=======
+updated content
+>>>>>>> UPDATED
+```
+- Use Doxygen-style comments.
+- Ensure that the source code remains consistent during updates; do not modify the source code, only add comments.
+"""
+        message_content = f"```\n{code_content}\n```\n\n{prompt_en}"
+        
+        payload = {
+            "model": "code-annotator",
+            "messages": [{
                 "role": "user",
                 "content": code_content
             }],

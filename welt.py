@@ -705,7 +705,7 @@ But never output something like:
                         result = "\n\n".join(arxiv_results)
                         return f"Searched {len(urls)} papers", result
                     else:
-                        return "No results found on ArXiv", "search_query"
+                        return "No results found on ArXiv", search_query
                 else:
                     return f"ArXiv search failed with status code {response.status_code}", search_query
             except Exception as e:
@@ -946,11 +946,13 @@ But never output something like:
     # Code Interpreter
     # -------------------
     def init_code_worker(self):
-        self.code_worker = HRModel.connect(
-            name="xuliang/code-worker-v2",
-            base_url="http://localhost:42899/apiv2",
-        )
-        funcs = self.code_worker.functions()  # Get all remote callable functions.
-        log.info(f"Remote callable funcs: {funcs}")
-        self.op_system = self.code_worker.inspect_system()
-
+        try:
+            self.code_worker = HRModel.connect(
+                name="xuliang/code-worker-v2",
+                base_url="http://localhost:42899/apiv2",
+            )
+            funcs = self.code_worker.functions()  # Get all remote callable functions.
+            log.info(f"Remote callable funcs: {funcs}")
+            self.op_system = self.code_worker.inspect_system()
+        except Exception as e:
+            log.error(f"Error initializing code worker: {e}")
