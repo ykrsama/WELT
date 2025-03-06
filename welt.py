@@ -40,6 +40,7 @@ from open_webui.models.knowledge import (
     KnowledgeUserModel,
 )
 from hepai import HRModel
+
 log = logging.getLogger(__name__)
 log.setLevel("DEBUG")
 
@@ -123,6 +124,17 @@ Assistant: ...
 **Calling Code Intepreter:**
 
 <code_interpreter type="exec" lang="python" filename="plot.py">
+# plotting code here
+</code_interpreter>
+
+---
+
+User: plot something using ROOT
+Assistant: ...
+
+**Calling Code Intepreter:**
+
+<code_interpreter type="exec" lang="root" filename="plot.C">
 # plotting code here
 </code_interpreter>
 
@@ -240,10 +252,7 @@ But never output something like:
 
         self.TOOL = {}
         self.prompt_templates = {}
-        self.replace_tags = {
-            "web_search": "Searching",
-            "knowledge_search": "Searching"
-        }
+        self.replace_tags = {"web_search": "Searching", "knowledge_search": "Searching"}
         # Global vars
         self.emitter = None
         self.total_response = ""
@@ -347,36 +356,46 @@ But never output something like:
                 msg = messages[i]
                 if msg["role"] == "assistant":
                     # 用正则匹配所有<details type="user_proxy">内容
-                    user_proxy_nodes = re.findall(r'<details type="user_proxy">(.*?)</details>', msg["content"], flags=re.DOTALL)
-                    
+                    user_proxy_nodes = re.findall(
+                        r'<details type="user_proxy">(.*?)</details>',
+                        msg["content"],
+                        flags=re.DOTALL,
+                    )
+
                     if user_proxy_nodes:
                         user_contents = []
                         for user_proxy_node in user_proxy_nodes:
                             user_proxy_text = str(user_proxy_node)
-                            summary_node = re.search(r'<summary>(.*?)</summary>', user_proxy_text, flags=re.DOTALL)
+                            summary_node = re.search(
+                                r"<summary>(.*?)</summary>",
+                                user_proxy_text,
+                                flags=re.DOTALL,
+                            )
                             if summary_node:
                                 summary_text = summary_node.group(1).strip()
                             else:
                                 summary_text = ""
-                            user_proxy_text = re.sub(r'<summary>.*?</summary>', "",user_proxy_text, flags=re.DOTALL).strip()
+                            user_proxy_text = re.sub(
+                                r"<summary>.*?</summary>",
+                                "",
+                                user_proxy_text,
+                                flags=re.DOTALL,
+                            ).strip()
                             user_contents.append(f"{summary_text}\n\n{user_proxy_text}")
-                        merged_user_contents = '\n\n'.join(user_contents)
+                        merged_user_contents = "\n\n".join(user_contents)
 
                         # (1) 删除消息中的<user_proxy>标签（保留其他内容）
                         clean_content = re.sub(
                             r'<details type="user_proxy">.*?</details>',
-                            '',
+                            "",
                             msg["content"],
-                            flags=re.DOTALL
+                            flags=re.DOTALL,
                         ).strip()
 
                         msg["content"] = clean_content
-                        
-                        new_user_msg = {
-                            "role": "user",
-                            "content": merged_user_contents
-                        }
-                        messages.insert(i+1, new_user_msg)  # 在当前消息后插入
+
+                        new_user_msg = {"role": "user", "content": merged_user_contents}
+                        messages.insert(i + 1, new_user_msg)  # 在当前消息后插入
                         i += 1
 
                 i += 1
@@ -386,9 +405,11 @@ But never output something like:
             while i < len(messages) - 1:
                 if messages[i]["role"] == messages[i + 1]["role"]:
                     # 合并相同角色的消息
-                    combined_content = messages[i]["content"] + "\n" + messages[i+1]["content"]
+                    combined_content = (
+                        messages[i]["content"] + "\n" + messages[i + 1]["content"]
+                    )
                     messages[i]["content"] = combined_content
-                    messages.pop(i+1)
+                    messages.pop(i + 1)
                 i += 1
 
             self._set_system_prompt(messages)
@@ -432,9 +453,7 @@ But never output something like:
                         except json.JSONDecodeError as e:
                             # 格式化错误信息，这里传入错误类型和详细原因（包括出错内容和异常信息）
                             error_detail = f"解析失败 - 内容：{json_str}，原因：{e}"
-                            yield self._format_error(
-                                "JSONDecodeError", error_detail
-                            )
+                            yield self._format_error("JSONDecodeError", error_detail)
                             return
 
                         choice = data.get("choices", [{}])[0]
@@ -442,7 +461,7 @@ But never output something like:
                         # 结束条件判断
                         if choice.get("finish_reason") or self.immediate_stop:
                             if not self.immediate_stop:
-                                res, tag_name= self._filter_response_tag()
+                                res, tag_name = self._filter_response_tag()
                                 yield res
                                 # Clean up
                                 if self.temp_content:
@@ -454,9 +473,9 @@ But never output something like:
                             self.total_response = self.total_response.lstrip("\n")
                             tools = self._find_tool_usage(self.total_response)
                             ## 防止奇数反引号
-                            #lines = self.total_response.split('\n')
-                            #backtick_count = sum(1 for line in lines if line.startswith('```'))
-                            #if backtick_count % 2 != 0:
+                            # lines = self.total_response.split('\n')
+                            # backtick_count = sum(1 for line in lines if line.startswith('```'))
+                            # if backtick_count % 2 != 0:
                             #    self.total_response += "\n```\n\n"
                             #    await asyncio.sleep(0.1)
                             #    yield "\n"
@@ -480,9 +499,9 @@ But never output something like:
                                     summary, content = await self.TOOL[tool["name"]](
                                         tool["attributes"], tool["content"]
                                     )
-                                    user_proxy_reply += f"{summary}\n\n{content}\n\n" 
+                                    user_proxy_reply += f"{summary}\n\n{content}\n\n"
                                     await asyncio.sleep(0.1)
-                                    yield f'\n<details type=\"user_proxy\">\n<summary>{summary}</summary>\n{content}\n</details>\n'
+                                    yield f'\n<details type="user_proxy">\n<summary>{summary}</summary>\n{content}\n</details>\n'
 
                                 messages.append(
                                     {
@@ -524,21 +543,24 @@ But never output something like:
                                     yield "\n"
                             if thinking_state["thinking"] != 0:
                                 res, tag_name = self._filter_response_tag(content)
-                                #if tag_name == "knowledge_search":
+                                # if tag_name == "knowledge_search":
                                 #    self.immediate_stop = True
-                                if tag_name in ["web_search","knowledge_search"]:
+                                # if tag_name in ["web_search","knowledge_search"]:
+                                if tag_name:
                                     self.current_tag_name = tag_name
-                                if tag_name is None and self.current_tag_name in ["web_search","knowledge_search"]:
+                                if tag_name is None and self.current_tag_name:
                                     if res:
                                         self.immediate_stop = True
                                         self.current_tag_name = None
                                         self.temp_content = ""
                                         res = ""
                                         # clip total response:
-                                        self.total_response = self.total_response[:-len(content)]
+                                        self.total_response = self.total_response[
+                                            : -len(content)
+                                        ]
                                 if res:
                                     yield res
-                                       
+
                             else:
                                 yield content
                 log.debug(messages)
@@ -596,9 +618,18 @@ But never output something like:
                         tag_name = match.group(1)
                         attributes_str = match.group(2)
                         tag_content = match.group(3).strip()
-                        summary = self.replace_tags[tag_name] + " " + tag_content + " in " + attributes_str
-                        res = self.temp_content[:match.start()] + f'\n<details type="{tag_name}">\n<summary>{summary}</summary>\n{tag_content}\n</details>'
-                        self.temp_content = self.temp_content[match.end():]
+                        summary = (
+                            self.replace_tags[tag_name]
+                            + " "
+                            + tag_content
+                            + " in "
+                            + attributes_str
+                        )
+                        res = (
+                            self.temp_content[: match.start()]
+                            + f'\n<details type="{tag_name}">\n<summary>{summary}</summary>\n{tag_content}\n</details>'
+                        )
+                        self.temp_content = self.temp_content[match.end() :]
                 else:
                     res = self.temp_content
                     self.temp_content = ""
@@ -665,7 +696,10 @@ But never output something like:
                     else:
                         return "No results found on Google", search_query
                 else:
-                    return f"Google search failed with status code {response.status_code}", search_query
+                    return (
+                        f"Google search failed with status code {response.status_code}",
+                        search_query,
+                    )
             except Exception as e:
                 return "Error during Google search", f"{str(e)}\nQuery: {search_query}"
 
@@ -695,9 +729,7 @@ But never output something like:
                             link = link_match.group(1)
                             urls.append(link)
                             summary = summary_match.group(1).strip()
-                            arxiv_results.append(
-                                f"**{title}**\n{summary}\n{link}\n"
-                            )
+                            arxiv_results.append(f"**{title}**\n{summary}\n{link}\n")
                         else:
                             log.error("Error parsing ArXiv entry.")
 
@@ -707,14 +739,88 @@ But never output something like:
                     else:
                         return "No results found on ArXiv", search_query
                 else:
-                    return f"ArXiv search failed with status code {response.status_code}", search_query
+                    return (
+                        f"ArXiv search failed with status code {response.status_code}",
+                        search_query,
+                    )
             except Exception as e:
                 return "Error during ArXiv search", f"{str(e)}\nQuery: {search_query}"
 
-        return "Invalid search source or query", f"Search engine: {engine}\nQuery:{search_query}"
+        return (
+            "Invalid search source or query",
+            f"Search engine: {engine}\nQuery:{search_query}",
+        )
 
-    async def _code_interpreter(self, attributes: dict, content: str) -> Tuple[str, str]:
-        return "Done", ""
+    async def _code_interpreter(
+        self, attributes: dict, content: str
+    ) -> Tuple[str, str]:
+        if self.code_worker is None:
+            init_code_worker()
+
+        # Extract the code interpreter type and language
+        code_type = attributes.get("type", "")
+        lang = attributes.get("lang", "")
+        filename = attributes.get("filename", "")
+        if code_type == "exec":
+            # Execute the code
+            if filename:
+                try:
+                    result = self.code_worker.write_code(
+                        file_path=filename,
+                        content=content,
+                        execute=True,
+                        lang=lang,
+                        timeout=300,
+                    )
+                    return "Code executed", result
+                except Exception as e:
+                    return f"Error executing {filename}", f"{str(e)}"
+            elif lang == "bash":
+                try:
+                    result = self.code_worker.run_command(command=content, timeout=300)
+                    return "Command executed", result
+                except Exception as e:
+                    return "Error executing bash command", f"{str(e)}"
+            else:
+                return "No filename provided for code execution", ""
+
+        elif code_type == "write":
+            if not filename:
+                return "No filename provided for code writing", ""
+            # Write the code to a file
+            try:
+                result = self.code_worker.write_code(
+                    file_path=filename, content=content
+                )
+                return "File written", result
+            except Exception as e:
+                return f"Error writing {filename}", f"{str(e)}"
+
+        elif code_type == "search_replace":
+            if not filename:
+                return "No filename provided for code search and replace", ""
+            # extract the original and updated code
+            edit_block_pattern = re.compile(
+                r"<<<<<<< ORIGINAL\s*(?P<original>.*?)"
+                r"=======\s*(?P<mid>.*?)"
+                r"\s*(?P<updated>.*)>>>>>>> ",
+                re.DOTALL,
+            )
+            match = edit_block_pattern.search(content)
+            if match:
+                original = match.group("original")
+                updated = match.group("updated")
+                try:
+                    result = self.code_worker.search_replace(
+                        file_path=filename, original=original, updated=updated
+                    )
+                    return f"Search and replaced {filename}", result
+                except Exception as e:
+                    return f"Error searching and replacing {filename}", f"{str(e)}"
+            else:
+                return "Invalid search and replace format"
+        else:
+            return "Invalid code interpreter type `{code_type}`", ""
 
     async def _generate_openai_batch_embeddings(
         self,
@@ -730,10 +836,10 @@ But never output something like:
                 json={"input": texts, "model": model},
                 headers={"Authorization": f"Bearer {key}"},
             )
-    
+
             # Check for valid response
             response.raise_for_status()  # Will raise an HTTPError for bad responses
-    
+
             # Parse and return embeddings if available
             data = response.json()
             if "data" in data:
@@ -741,7 +847,9 @@ But never output something like:
             else:
                 raise ValueError("Response from OpenAI API did not contain 'data'.")
         except httpx.HTTPStatusError as e:
-            log.error(f"HTTP error occurred: {e.response.status_code} - {e.response.text}")
+            log.error(
+                f"HTTP error occurred: {e.response.status_code} - {e.response.text}"
+            )
         except Exception as e:
             log.error(f"An error occurred while generating embeddings: {str(e)}")
         return None
@@ -779,7 +887,9 @@ But never output something like:
                 log.error(f"Generating Embeddings attempt {i + 1} failed: {e}")
                 await asyncio.sleep(2)
         if not embeddings:
-            raise ValueError(f"Faild generating embeddings, could be a network fluctuation.")
+            raise ValueError(
+                f"Faild generating embeddings, could be a network fluctuation."
+            )
         log.debug(f"Embeddings length: {len(embeddings)}")
         log.debug("Searching VECTOR_DB_CLIENT")
         knowledge = self.knowledges.get(knowledge_name, [])
@@ -831,7 +941,9 @@ But never output something like:
 
         return top_results
 
-    async def _knowledge_search(self, attributes: dict, content: str) -> Tuple[str, str]:
+    async def _knowledge_search(
+        self, attributes: dict, content: str
+    ) -> Tuple[str, str]:
         """
         Retrieve relevant information from a knowledge collection
         based on the provided query, and return the results.
@@ -956,3 +1068,4 @@ But never output something like:
             self.op_system = self.code_worker.inspect_system()
         except Exception as e:
             log.error(f"Error initializing code worker: {e}")
+
