@@ -87,7 +87,7 @@ class Pipe:
 
 You have access to a user's {{OP_SYSTEM}} code workspace, use `<code_interpreter>` XML tag to write codes to do analysis, calculations, or problem-solving. Here's how it works:
 
-<code_interpreter type="exec" lang="python" filename="">
+<code_interpreter type="exec" lang="bash" filename="">
 code here (DO NOT consider xml escaping, e.g. use `<`, DO NOT use `&lt;`)
 </code_interpreter>
 
@@ -95,7 +95,7 @@ code here (DO NOT consider xml escaping, e.g. use `<`, DO NOT use `&lt;`)
 
 - `type`: Specifies the action to perform.
    - `exec`: Execute the code immediately.
-      - Supported languages: `python`, `root`, `bash`
+      - Supported languages: `python`, `bash`, `root` (root macro), `boss`
    - `write`: Write and save the code to a file.
       - Supports any programming language.
 
@@ -104,6 +104,7 @@ code here (DO NOT consider xml escaping, e.g. use `<`, DO NOT use `&lt;`)
 
 #### Usage Instructions
 
+- The Bash script you write can inspect environment, list directory contents, display directory tree structure, display file contents, install depencies, or run any other shell-related tasks. Use this flexibility to **think out of the box, debug by inspecting workspace, or interact with the system**.
 - The Python code you write can incorporate a wide array of libraries, handle data manipulation or visualization, perform API calls for web-related tasks, or tackle virtually any computational challenge. Use this flexibility to **think outside the box, craft elegant solutions, and harness Python's full potential**.
 - Output XML node simply like `<code_interpreter ...>...</code_interpreter>`, DO NOT put XML node inside the markdown code block (```xml). 
 - Coding style instruction:
@@ -122,15 +123,6 @@ Assistant: ...
 **Calling Code Intepreter:**
 <code_interpreter type="exec" lang="python" filename="plot.py">
 # plotting code here
-</code_interpreter>
-
----
-
-User: Use ROOT to analyse something
-Assistant: ...
-**Calling Code Intepreter:**
-<code_interpreter type="exec" lang="root" filename="analysis.C">
-...
 </code_interpreter>
 
 ---
@@ -154,62 +146,6 @@ make
 </code_interpreter>
 
 ---
-
-User: Run DSimu with 100 events
-Assistant: <code_interpreter type="exec" lang="bash" filename="run_dsimu.sh">
-# Generate 100 events of DarkSHINE MC with DSimu
-DSimu -b 100
-</code_interpreter>
-
----
-
-User: Run DAna
-Assistant: <code_interpreter type="exec" lang="bash" filename="run_dana.sh">
-# Reconstruct DarkSHINE MC by DAna
-DAna -c config.txt  # this config file in workspace will input dp_simu.root and output dp_ana.root
-</code_interpreter>
-
----
-
-User: Inspect dp_ana.root
-Assistant: <code_interpreter type="exec" lang="root" filename="inspect_dp_ana.C">
-{
-    // Open the ROOT file
-    TFile *file = TFile::Open("dp_ana.root");
-    if (!file || file->IsZombie()) {
-        cout << "Error: Unable to open dp_ana.root" << endl;
-        return;
-    }
-
-    // List all keys in the file
-    TIter next(file->GetListOfKeys());
-    TKey *key;
-
-    while ((key = (TKey*)next())) {
-        TObject *obj = key->ReadObj();
-
-        // Check if the object is a TTree
-        if (obj->InheritsFrom("TTree")) {
-            TTree *tree = (TTree*)obj;
-            cout << "-----------------------------" << endl;
-            cout << "Tree Name: " << tree->GetName() << endl;
-            cout << "Tree Title: " << tree->GetTitle() << endl;
-            // Print first 100 branch names
-            cout << "First 100 branches:" << endl;
-            TObjArray *branches = tree->GetListOfBranches();
-            for(int i=0; i<100 && i<branches->GetEntries(); i++) {
-                TBranch *br = (TBranch*)branches->At(i);
-                TLeaf *leaf = br->GetLeaf(br->GetName());
-                cout << " - " << br->GetName() << " (" << leaf->GetTypeName() << ")" << endl;
-            }
-        }
-    }
-
-    // Close the file
-    file->Close();
-}
-</code_interpreter>
-
 
 """
         self.WEB_SEARCH_PROMPT: str = """Web Search
@@ -255,7 +191,251 @@ Assistant: <code_interpreter type="exec" lang="root" filename="inspect_dp_ana.C"
 - In each `<knowledge_search>` XML tag, be concise and focused on composing high-quality search query, **avoiding unnecessary elaboration, commentary, or assumptions**.
 - Enclose only one query in one pair of `<knowledge_search collection="...">` `</knowledge_search>` XML tags.
 """
-        self.GUIDE_PROMPT: str = """## Task:
+        self.GUIDE_PROMPT: str = """## Physics Analysis Guide:
+### Simulation and Reconstruction
+
+1. Configure the beam parameters and detector geometries for the simulation setup
+2. Signal simulation and reconstruction
+   1. Decide the free parameters to scan according to the signal model
+   2. Simulate signal events
+      1. Prepare config file
+      2. Run simulation program
+         - DSimu: DarkSHINE MC event generator
+         - boss.exe: BESIII MC event generator
+   3. Reconstruct the signal events.
+      1. Prepare config file
+      2. Run reconstruction program
+         - DAna: DarkSHINE reconstruction program
+         - boss.exe: BESIII reconstruction program
+3. Background simulation and reconstruction
+   1. Configure the physics process for background events
+   2. Simulate background events
+   3. Reconstruct background events
+
+Examples:
+
+---
+
+User: For DarkSHINE (electron-on-target), generate and reconstruct 100 dark photon invisible decay signal events per signal mass
+Assistant: Scan dark photon mass mAp, and output simulation files to eot/signal/invisible/mAp_*/dp_simu/0.root
+<code_interpreter type="exec" lang="bash" filename="signal_invisible_decay_eot.sh">
+#!/bin/bash
+
+# Set the base directory for the simulation
+base_dir=$PWD/eot/signal/invisible
+mkdir -p $base_dir
+
+# Set the original config file directory
+dsimu_script_dir="/opt/darkshine-simulation/source/DP_simu/scripts"
+default_yaml="$dsimu_script_dir/default.yaml"
+magnet_file="$dsimu_script_dir/magnet_0.75_20240521.root"
+signal_lut="$dsimu_script_dir/dp_E4_W_LUT_20240327.root"
+
+# Prepare reconstruction config file
+DAna -x > $base_dir/config.txt
+
+# Scan over dark photon mass mAp
+for mAp in 10 20 50 100 200 500 1000; do
+    echo "Processing mAp = ${mAp} MeV"
+    # Create and goto directory for each mA
+    cur_dir=$base_dir/mAp_${mAp}
+    mkdir -p $cur_dir/dp_simu
+    mkdir -p $cur_dir/dp_ana
+    cd $cur_dir
+
+    # Prepare config file for simulation
+    echo "-- Preparing simulation config"
+    sed -e "s:signal_production\::signal_production\: true  \#:" \
+        -e "s:signal_mass\::signal_mass\: \[${mAp},\"MeV\"\]  \#:" \
+        -e "s:signal_lookup_table\::signal_lookup_table\: \"${signal_lut}\"  \#:" \
+        -e "s:  mag_field_input\::  mag_field_input\: \"${magnet_file}\"  \#:" \
+        $default_yaml > default.yaml
+
+    # Run Simulation
+    echo "-- Running simulation"
+    DSimu -y default.yaml -b 100 -f dp_simu/0.root > simu.out 2> simu.err
+
+    # Prepare reconstruction config file
+    echo "-- Preparing reconstruction config"
+    sed -e "s:InputFile:InputFile = dp_simu/0.root  \#:" \
+        -e "s:InputGeoFile:InputGeoFile = dp_simu/0.root  \#:" \
+        -e "s:OutputFile:OutputFile = dp_ana/0.root  \#:" \
+        $base_dir/config.txt > $cur_dir/config.txt
+
+    # Reconstruction
+    echo "-- Running reconstruction"
+    DAna -c config.txt > ana.out 2> ana.err
+done
+
+echo "All done!"
+
+</code_interpreter>
+
+---
+
+User: For DarkSHINE, simulate and reconstruct inclusive background events
+Assistant: <code_interpreter type="exec" lang="bash" filename="background_inclusive_eot.sh">
+#!/bin/bash
+
+# Set the base directory for the simulation
+base_dir=$PWD/eot/background/inclusive
+mkdir -p $base_dir/dp_simu
+mkdir -p $base_dir/dp_ana
+cd $base_dir
+
+# Set the original config file directory
+dsimu_script_dir="/opt/darkshine-simulation/source/DP_simu/scripts"
+default_yaml="$dsimu_script_dir/default.yaml"
+magnet_file="$dsimu_script_dir/magnet_0.75_20240521.root"
+DAna -x > config_temp.txt
+
+# Prepare config file for simulation
+echo "-- Preparing simulation config"
+sed "s:  mag_field_input\::  mag_field_input\: \"${magnet_file}\"  \#:" $default_yaml > default.yaml
+
+# Run Simulation
+echo "-- Running simulation"
+DSimu -y default.yaml -b 100 -f dp_simu/0.root > simu.out 2> simu.err
+
+# Prepare reconstruction config file
+echo "-- Preparing reconstruction config"
+sed -e "s:InputFile:InputFile = dp_simu/0.root  \#:" \
+    -e "s:InputGeoFile:InputGeoFile = dp_simu/0.root  \#:" \
+    -e "s:OutputFile:OutputFile = dp_ana/0.root  \#:" \
+    config_temp.txt > config.txt
+
+# Reconstruction
+echo "-- Running reconstruction"
+DAna -c config.txt > ana.out 2> ana.err
+
+echo "All done!"
+
+</code_interpreter>
+
+---
+
+### Validation
+
+1. Inspect the ROOT file containing the reconstructed data
+2. Plot histograms to compare the signal and background kinematic distributions
+
+Examples:
+
+---
+
+User: Inspect tree structure of `eot/background/inclusive/dp_ana/0.root`
+Assistant: <code_interpreter type="exec" lang="python" filename="inspect_trees.py">
+import ROOT
+import argparse
+
+def inspect_trees():
+    # Open the ROOT file
+    root_file = ROOT.TFile.Open(args.filename)
+
+    # Iterate through all keys in the file
+    for key in root_file.GetListOfKeys():
+        obj = key.ReadObj()
+        if obj.InheritsFrom(ROOT.TTree.Class()):
+            tree = obj
+            branches = tree.GetListOfBranches()
+            # Print header for each tree
+            print("Tree Name\tBranch Name\tLeaf Type\tBranch Description")
+            for i in range(branches.GetEntries()):
+                branch = branches.At(i)
+                leaf = branch.GetLeaf(branch.GetName())
+                leaf_type = leaf.GetTypeName() if leaf else "Unknown"
+                print(f"{tree.GetName()}\t{branch.GetName()}\t{leaf_type}\t{branch.GetTitle()}")
+
+    root_file.Close()
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Inspect trees in a ROOT file.')
+    parser.add_argument('filename', nargs='?', default='eot/background/inclusive/dp_ana/0.root', help='Path to the ROOT file (default: %(default)s)')
+    args = parser.parse_args()
+
+    inspect_trees()
+
+</code_interpreter>
+
+---
+
+User: Compare the `ECAL_E_total[0]` of signal and background events
+Assistant: <code_interpreter type="exec" lang="python" filename="compare_histograms.py">
+import ROOT
+import argparse
+...
+
+def compare_histograms(branch: str, pre_selection: str, log_scale: bool, signal_dir: str, background_dir: str):
+    # overlap histograms and with automatic range
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Compare histograms of signal and background events.')
+    parser.add_argument('branch', nargs='?', default='ECAL_E_total[0]', help='Branch name to compare (default: %(default)s)')
+    parser.add_argument('--pre-selection', default='', help='Pre-selection to apply (default: %(default)s)')
+    parser.add_argument('--log-scale', action='store_true', help='Use log scale for y-axis')
+    parser.add_argument('--signal-dir', default='eot/signal/invisible/mAp_100/dp_ana', help='Directory containing signal ROOT files (default: %(default)s)')
+    parser.add_argument('--background-dir', default='eot/background/inclusive/dp_ana', help='Directory containing background ROOT files (default: %(default)s)')
+    args = parser.parse_args()
+
+    compare_histograms(args.branch, args.pre_selection, args.log_scale, args.signal_dir, args.background_dir)
+
+</code_interpreter>
+User: Alos plot `HCAL_E_total[0]`
+Assistant: Re-using compareHistograms.C
+<code_interpreter type="exec" lang="bash" filename="plot_HCAL_E_total_0.sh">
+python compareHistograms.py HCAL_E_total[0]
+</code_interpreter>
+
+---
+
+### Cut-based Analysis
+
+1. Define signal region according to physics knowledge
+2. Decide an initial loose cut values for signal region
+3. Optimize cuts to maximize significance
+4. Draw and print cutflow
+5. Recursively optimize cut until the significance is maximized
+   - Vary signal region definition and cut values
+   - Optimize cuts to maximize significance
+   - Draw and print cutflow
+
+#### Guidelines
+
+- If exists multiple signal regions, signal regions should be orthogonal to each other
+
+#### Examples
+
+---
+
+User: Optimize cut of `ECAL_E_total[0]` with pre-selection `TagTrk2_track_No == 1 && RecTrk2_track_No == 1`
+Assistant: <code_interpreter type="exec" lang="python" filename="optimize_cut.py">
+import ROOT
+import argparse
+...
+
+def optimize_cut(cut: str, pre_selection: str, signal_dir: str, background_dir: str):
+    # load files
+    # apply pre-selection when getting histogram of cut variable for signal and background
+    # draw cumulative histograms of the cut varaible
+    # calculate `S/sqrt(S+B)` for each cut value
+    # draw S/sqrt(S+B) vs cut value
+    # print the cut value, cut efficiency and significance for the optimized cut
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Optimize cut value.')
+    parser.add_argument('cut', nargs='?', default='ECAL_E_total[0]', help='Cut variable to optimize (default: %(default)s)')
+    parser.add_argument('--pre-selection', default='TagTrk2_track_No == 1 && RecTrk2_track_No == 1', help='Pre-selection to apply (default: %(default)s)')
+    parser.add_argument('--signal-dir', default='eot/signal/invisible/mAp_100/dp_ana', help='Directory containing signal ROOT files (default: %(default)s)')
+    parser.add_argument('--background-dir', default='eot/background/inclusive/dp_ana', help='Directory containing background ROOT files (default: %(default)s)')
+    args = parser.parse_args()
+
+    optimize_cut(args.cut, args.pre_selection, args.signal_dir, args.background_dir)
+
+</code_interpreter>
+
+---
+
+## Task:
 
 - You are a independent, patient, careful and accurate assistant, utilizing tools to help user. You analysis the chat history, decide and determine wether to use tool, or simply response to user. You can call tools by using xml node. Available Tools: Code Interpreter, Web Search, or Knowledge Search.
 
@@ -783,7 +963,7 @@ But never output something like:
         self, attributes: dict, content: str
     ) -> Tuple[str, str]:
         if self.code_worker is None:
-            init_code_worker()
+            self.init_code_worker()
 
         # Extract the code interpreter type and language
         code_type = attributes.get("type", "")
@@ -810,11 +990,11 @@ But never output something like:
                 except Exception as e:
                     return "Error executing bash command", f"{str(e)}"
             else:
-                return "No filename provided for code execution", ""
+                return "No filename provided for code execution", "Please provide filename in xml attribute."
 
         elif code_type == "write":
             if not filename:
-                return "No filename provided for code writing", ""
+                return "No filename provided for code writing", "Please provide filename in xml attribute."
             # Write the code to a file
             try:
                 result = self.code_worker.write_code(
@@ -826,7 +1006,7 @@ But never output something like:
 
         elif code_type == "search_replace":
             if not filename:
-                return "No filename provided for code search and replace", ""
+                return "No filename provided for code search and replace", "Please provide filename in xml attribute."
             # extract the original and updated code
             edit_block_pattern = re.compile(
                 r"<<<<<<< ORIGINAL\s*(?P<original>.*?)"
@@ -846,9 +1026,9 @@ But never output something like:
                 except Exception as e:
                     return f"Error searching and replacing {filename}", f"{str(e)}"
             else:
-                return "Invalid search and replace format", ""
+                return "Invalid search and replace format", "Format: <<<<<<< ORIGINAL\nOriginal code\n=======\nUpdated code\n>>>>>>> UPDATED"
         else:
-            return "Invalid code interpreter type `{code_type}`", ""
+            return f"Invalid code interpreter type `{code_type}`", "Available types: `exec`, `write`"
 
     async def _generate_openai_batch_embeddings(
         self,
