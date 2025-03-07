@@ -1,7 +1,7 @@
 """
 title: Welt
 author: Xuliang
-description: OpenWebUI pipe function for Welt: Workflow Enhanced LLM with CoT
+description: OpenWebUI pipe function for Welt: Workflow-adaptivE LLM with Target-oriented system
 version: 0.0.8
 licence: MIT
 """
@@ -155,6 +155,62 @@ make
 
 ---
 
+User: Run DSimu with 100 events
+Assistant: <code_interpreter type="exec" lang="bash" filename="run_dsimu.sh">
+# Generate 100 events of DarkSHINE MC with DSimu
+DSimu -b 100
+</code_interpreter>
+
+---
+
+User: Run DAna
+Assistant: <code_interpreter type="exec" lang="bash" filename="run_dana.sh">
+# Reconstruct DarkSHINE MC by DAna
+DAna -c config.txt  # this config file in workspace will input dp_simu.root and output dp_ana.root
+</code_interpreter>
+
+---
+
+User: Inspect dp_ana.root
+Assistant: <code_interpreter type="exec" lang="root" filename="inspect_dp_ana.C">
+{
+    // Open the ROOT file
+    TFile *file = TFile::Open("dp_ana.root");
+    if (!file || file->IsZombie()) {
+        cout << "Error: Unable to open dp_ana.root" << endl;
+        return;
+    }
+
+    // List all keys in the file
+    TIter next(file->GetListOfKeys());
+    TKey *key;
+
+    while ((key = (TKey*)next())) {
+        TObject *obj = key->ReadObj();
+
+        // Check if the object is a TTree
+        if (obj->InheritsFrom("TTree")) {
+            TTree *tree = (TTree*)obj;
+            cout << "-----------------------------" << endl;
+            cout << "Tree Name: " << tree->GetName() << endl;
+            cout << "Tree Title: " << tree->GetTitle() << endl;
+            // Print first 100 branch names
+            cout << "First 100 branches:" << endl;
+            TObjArray *branches = tree->GetListOfBranches();
+            for(int i=0; i<100 && i<branches->GetEntries(); i++) {
+                TBranch *br = (TBranch*)branches->At(i);
+                TLeaf *leaf = br->GetLeaf(br->GetName());
+                cout << " - " << br->GetName() << " (" << leaf->GetTypeName() << ")" << endl;
+            }
+        }
+    }
+
+    // Close the file
+    file->Close();
+}
+</code_interpreter>
+
+
 """
         self.WEB_SEARCH_PROMPT: str = """Web Search
 
@@ -205,7 +261,7 @@ make
 
 ## Guidelines:
 
-- Provide an overall plan in markdown to describe how to solve the problem. When planning, don't write code, don't call tools, don't use XML tag.
+- Provide an overall plan (task list) in markdown to describe how to solve the problem. When planning, don't write code, don't call tools, don't use XML tag.
 - Check the chat history to see if there are anything left that are waiting to be executed by tool. Call tool to solve it.
 - Check if all the tools is running succesfully, if not, solve it by refine and retry the tool.
 - If there are anything unclear, unexpected, or require validation, make it clear by iteratively use tool, until everything is clear with it's own reference (from tool). **DO NOT make ANY assumptions, DO NOT make-up any reply, DO NOT turn to user for information**.
@@ -470,7 +526,7 @@ But never output something like:
                                         tool["attributes"], tool["content"]
                                     )
                                     user_proxy_reply += f"{summary}\n\n{content}\n\n"
-                                    await asyncio.sleep(0.1)
+                                    await asyncio.sleep(0.5)
                                     yield f'\n<details type="user_proxy">\n<summary>{summary}</summary>\n{content}\n</details>\n'
 
                                 messages.append(
@@ -847,7 +903,7 @@ But never output something like:
             log.debug(f"Generating Embeddings")
             try:
                 embeddings = await self._generate_openai_batch_embeddings(
-                    model="BAAI/bge-m3",
+                    model="Pro/BAAI/bge-m3",
                     texts=[query_keywords],
                     url=self.valves.DEEPSEEK_API_BASE_URL,
                     key=self.valves.DEEPSEEK_API_KEY,
