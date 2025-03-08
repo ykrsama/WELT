@@ -83,18 +83,18 @@ class Pipe:
         self.data_prefix = "data:"
         self.max_loop = self.valves.MAX_LOOP  # Save moneya
         self.client = httpx.AsyncClient(
-                http2=True,
-                proxy="http://127.0.0.1:7890",
-                timeout=None,
+            http2=True,
+            proxy="http://127.0.0.1:7890",
+            timeout=None,
         )
         self.CODE_INTERFACE_PROMPT: str = """Code Interface
 
 You have access to a user's {{OP_SYSTEM}} computer workspace, use `<code_interface>` XML tag to write codes to do analysis, calculations, or problem-solving. Here's how it works:
 
-<code_interface type="exec" lang="bash" filename="">
+<code_interface type="exec" lang="python" filename="">
 
-```bash
-# code here
+```python
+# complete and production-ready code here
 ```
 
 </code_interface>
@@ -304,14 +304,12 @@ Plot histograms to compare the signal and background kinematic distributions
 
 Tree Name: `dp`
 
-| Branch Name | Type | Description |
+| Column Name | Type | Description |
 | --- | --- | --- |
 | TagTrk2_pp | Double_t[] | Reconstructed Tagging Tracker momentum [MeV]. TagTrk2_pp[0] - Leading momentum track |
 | TagTrk2_track_No | Int_t | Number of reconstructed Tagging Tracker tracks |
-| TagTrk2_track_chi2 | Double_t[] | Chi2 of reconstructed Tagging Tracker tracks. TagTrk2_track_chi2[0] - Leading momentum track  |
 | RecTrk2_pp | Double_t[] | Reconstructed Recoil Tracker momentum [MeV]. RecTrk2_pp[0] - Leading momentum track |
 | RecTrk2_track_No | Int_t | Number of reconstructed Recoil Tracker Tracks |
-| RecTrk2_track_chi2 | Double_t[] | Chi2 of reconstructed Recoil Tracker tracks. RecTrk2_track_chi2[0] - Leading momentum track |
 | ECAL_E_total | vector<double> | Total energy deposited in the ECAL [MeV]. ECAL_E_total[0] - Truth total energy. ECAL_E_total[1] - Smeard total energy with configuration 1. |
 | ECAL_E_max | vector<double> | Maximum energy deposited of the ECAL Cell [MeV]. ECAL_E_max[0] - Truth maximum energy. ECAL_E_max[1] - Smeard maximum energy with configuration 1. |
 | HCAL_E_total | vector<double> | Total energy deposited in the HCAL [MeV]. HCAL_E_total[0] - Truth total energy. HCAL_E_total[1] - Smeard total energy with configuration 1. |
@@ -327,9 +325,10 @@ import ROOT
 import argparse
 ...
 
-def compare(branch: str, fig_name: str):
+def compare(column: str, fig_name: str):
     # create output dir if not exists
-    # draw normalized histogram with pre-selection, and no specified range
+    # load files
+    # draw histogram with pre_selection and column
     # overlay histograms of signal and background
     # save to png
 
@@ -375,9 +374,9 @@ import ROOT
 import argparse
 ...
 
-def optimize_cut(cut: str, pre_selection: str, signal_dir: str, background_dir: str):
+def optimize_cut(column: str, pre_selection: str, signal_dir: str, background_dir: str):
     # load files
-    # apply pre-selection when getting histogram of cut variable for signal and background
+    # draw histogram with pre_selection and column name with autmoatic range
     # draw cumulative histograms of the cut varaible, save to png with distinctable filename
     # calculate `S/sqrt(S+B)` for each cut value
     # draw S/sqrt(S+B) vs cut value, save to png with distinctble filename
@@ -385,7 +384,7 @@ def optimize_cut(cut: str, pre_selection: str, signal_dir: str, background_dir: 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Optimize cut value.')
-    parser.add_argument('cut', nargs='?', default='ECAL_E_total[0]', help='Cut variable to optimize')
+    parser.add_argument('column', nargs='?', default='ECAL_E_total[0]', help='Cut variable to optimize')
     parser.add_argument('--pre-selection', default='TagTrk2_track_No == 1 && RecTrk2_track_No == 1', help='Pre-selection to apply')
     parser.add_argument('--signal-dir', default='eot/signal/invisible/mAp_100/dp_ana', help='Directory containing signal ROOT files')
     parser.add_argument('--background-dir', default='eot/background/inclusive/dp_ana', help='Directory containing background ROOT files')
@@ -412,7 +411,9 @@ if __name__ == "__main__":
 - All responses should be communicated in the chat's primary language, ensuring seamless understanding.
 
 """
-        self.VISION_MODEL_PROMPT: str = """Please briefly explain and analyze this figure. If it's a histogram, also tell if the histogram binning and plotting range is suitable for the dataset."""
+        self.VISION_MODEL_PROMPT: str = (
+            """Please briefly explain and analyze this figure. If it's a histogram, also tell if the histogram binning and plotting range is suitable for the dataset."""
+        )
 
         self.TOOL = {}
         self.prompt_templates = {}
@@ -524,7 +525,9 @@ if __name__ == "__main__":
                     for c in content:
                         if c.get("type", "") == "text":
                             text_content = c.get("text", "")
-                            log.debug(f"Found text in last user message: {text_content}")
+                            log.debug(
+                                f"Found text in last user message: {text_content}"
+                            )
                             break
 
                     # 查找图片内容
@@ -580,7 +583,10 @@ if __name__ == "__main__":
                 msg = messages[i]
                 if msg["role"] == "assistant":
                     # 删除所有running提示
-                    msg["content"].replace('<details type="status">\n<summary>Running...</summary>\nRunning\n</details>','')
+                    msg["content"].replace(
+                        '<details type="status">\n<summary>Running...</summary>\nRunning\n</details>',
+                        "",
+                    )
 
                     # 用正则匹配所有<details type="user_proxy">内容
                     user_proxy_nodes = re.findall(
@@ -726,7 +732,9 @@ if __name__ == "__main__":
 
                                     if image_urls:
                                         # Call Vision Language Model
-                                        figure_summary = await self._query_vision_model(self.VISION_MODEL_PROMPT, image_urls)
+                                        figure_summary = await self._query_vision_model(
+                                            self.VISION_MODEL_PROMPT, image_urls
+                                        )
                                         content += figure_summary
 
                                     user_proxy_reply += f"{summary}\n\n{content}\n\n"
@@ -987,7 +995,6 @@ if __name__ == "__main__":
             f"Search engine: {engine}\nQuery:{search_query}",
         )
 
-
     async def _generate_openai_batch_embeddings(
         self,
         model: str,
@@ -1218,8 +1225,8 @@ if __name__ == "__main__":
             context_message = {"role": "system", "content": result}
             messages.insert(0, context_message)
 
-        #log.debug("Current System Prompt:")
-        #log.debug(result)
+        # log.debug("Current System Prompt:")
+        # log.debug(result)
 
     # =========================================================================
     # Code Interface
@@ -1236,9 +1243,7 @@ if __name__ == "__main__":
         except Exception as e:
             log.error(f"Error initializing code worker: {e}")
 
-    async def _code_interface(
-        self, attributes: dict, content: str
-    ) -> Tuple[str, str]:
+    async def _code_interface(self, attributes: dict, content: str) -> Tuple[str, str]:
         log.debug("Starting Code Interface")
         if self.code_worker is None:
             self.init_code_worker()
@@ -1251,7 +1256,10 @@ if __name__ == "__main__":
         # Remove the first line and the last line (markdown code block)
         lines = content.strip().splitlines()
         if len(lines) <= 2:
-            return "Error: Too few lines to extract code", "Check if you have code in markdown code block"
+            return (
+                "Error: Too few lines to extract code",
+                "Check if you have code in markdown code block",
+            )
         lines = lines[1:-1]
         content = "\n".join(lines)
 
@@ -1276,11 +1284,17 @@ if __name__ == "__main__":
                 except Exception as e:
                     return "Error executing bash command", f"{str(e)}"
             else:
-                return "No filename provided for code execution", "Please provide filename in xml attribute."
+                return (
+                    "No filename provided for code execution",
+                    "Please provide filename in xml attribute.",
+                )
 
         elif code_type == "write":
             if not filename:
-                return "No filename provided for code writing", "Please provide filename in xml attribute."
+                return (
+                    "No filename provided for code writing",
+                    "Please provide filename in xml attribute.",
+                )
             # Write the code to a file
             try:
                 result = self.code_worker.write_code(
@@ -1292,7 +1306,10 @@ if __name__ == "__main__":
 
         elif code_type == "search_replace":
             if not filename:
-                return "No filename provided for code search and replace", "Please provide filename in xml attribute."
+                return (
+                    "No filename provided for code search and replace",
+                    "Please provide filename in xml attribute.",
+                )
             # extract the original and updated code
             edit_block_pattern = re.compile(
                 r"<<<<<<< ORIGINAL\s*(?P<original>.*?)"
@@ -1312,9 +1329,15 @@ if __name__ == "__main__":
                 except Exception as e:
                     return f"Error searching and replacing {filename}", f"{str(e)}"
             else:
-                return "Invalid search and replace format", "Format: <<<<<<< ORIGINAL\nOriginal code\n=======\nUpdated code\n>>>>>>> UPDATED"
+                return (
+                    "Invalid search and replace format",
+                    "Format: <<<<<<< ORIGINAL\nOriginal code\n=======\nUpdated code\n>>>>>>> UPDATED",
+                )
         else:
-            return f"Invalid code interface type `{code_type}`", "Available types: `exec`, `write`"
+            return (
+                f"Invalid code interface type `{code_type}`",
+                "Available types: `exec`, `write`",
+            )
 
     # =========================================================================
     # Vision Language Model
@@ -1332,23 +1355,20 @@ if __name__ == "__main__":
             payload = {
                 "model": model,
                 "messages": [
-                     {
-                         "role": "user",
-                         "content": [
-                             {
-                                 "type": "image_url",
-                                 "image_url": {
-                                     "url": image_url,
-                                     "detail": "high"
-                                 }
-                             },
-                             {
-                                 "type": "text",
-                                 "text": prompt,
-                             }
-                         ]
-                     }
-                 ],
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": image_url, "detail": "high"},
+                            },
+                            {
+                                "type": "text",
+                                "text": prompt,
+                            },
+                        ],
+                    }
+                ],
                 "stream": False,
                 "max_tokens": 512,
                 "stop": None,
@@ -1364,10 +1384,10 @@ if __name__ == "__main__":
                 json=payload,
                 headers={
                     "Authorization": f"Bearer {key}",
-                    "Content-Type": "application/json"
-                }
-           )
-            #response = requests.request(
+                    "Content-Type": "application/json",
+                },
+            )
+            # response = requests.request(
             #    "POST",
             #    url=f"{url}/chat/completions",
             #    json=payload,
@@ -1379,7 +1399,7 @@ if __name__ == "__main__":
             #       'http': 'http://127.0.0.1:7890',
             #       'https': 'http://127.0.0.1:7890',
             #    }
-            #)
+            # )
 
             # Check for valid response
             response.raise_for_status()
@@ -1389,7 +1409,9 @@ if __name__ == "__main__":
             return data["choices"][0]["message"]["content"]
 
         except httpx.HTTPStatusError as e:
-            log.error(f"HTTP error occurred: {e.response.status_code} - {e.response.text}")
+            log.error(
+                f"HTTP error occurred: {e.response.status_code} - {e.response.text}"
+            )
             return f"HTTP error occurred: {e.response.status_code} - {e.response.text}"
         except httpx.ReadTimeout as e:
             log.error(f"Read Timeout error occurred")
@@ -1402,33 +1424,31 @@ if __name__ == "__main__":
         Extract image URLs from text with 2 criteria:
         1. URLs ending with .png/.jpeg/.jpg/.gif/.svg (case insensitive)
         2. URLs in markdown image format regardless of extension
-        
+
         Args:
             text: Input text containing potential image URLs
-            
+
         Returns:
             List of unique image URLs sorted by first occurrence
         """
         # Match URLs with image extensions (including query parameters)
         ext_pattern = re.compile(
-            r'https?:\/\/[^\s]+?\.(?:png|jpe?g|gif|svg)(?:\?[^\s]*)?(?=\s|$)', 
-            re.IGNORECASE
+            r"https?:\/\/[^\s]+?\.(?:png|jpe?g|gif|svg)(?:\?[^\s]*)?(?=\s|$)",
+            re.IGNORECASE,
         )
-        
+
         # Match markdown image syntax URLs
-        md_pattern = re.compile(
-            r'!\[[^\]]*\]\((https?:\/\/[^\s\)]+)'
-        )
-        
+        md_pattern = re.compile(r"!\[[^\]]*\]\((https?:\/\/[^\s\)]+)")
+
         # Find all matches while preserving order
         seen = set()
         result = []
-        
+
         for match in ext_pattern.findall(text) + md_pattern.findall(text):
             if match not in seen:
                 seen.add(match)
                 result.append(match)
-        
+
         return result
 
     async def _query_vision_model(
@@ -1447,7 +1467,7 @@ if __name__ == "__main__":
                 image_url=url,
                 model="Qwen/Qwen2-VL-72B-Instruct",
                 url=self.valves.DEEPSEEK_API_BASE_URL,
-                key=self.valves.DEEPSEEK_API_KEY
+                key=self.valves.DEEPSEEK_API_KEY,
             )
             response += f"\n\n{fig_name} {vl_res}"
         return response
