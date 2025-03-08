@@ -85,7 +85,7 @@ class Pipe:
         self.client = httpx.AsyncClient(
                 http2=True,
                 proxy="http://127.0.0.1:7890",
-                timeout=None
+                timeout=None,
         )
         self.CODE_INTERPRETER_PROMPT: str = """Code Interpreter
 
@@ -1374,19 +1374,27 @@ But never output something like:
                 "n": 1,
                 "response_format": {"type": "text"},
             }
-            response = requests.request(
-                "POST",
+            response = await self.client.post(
                 url=f"{url}/chat/completions",
                 json=payload,
                 headers={
                     "Authorization": f"Bearer {key}",
                     "Content-Type": "application/json"
-                },
-                proxies = {
-                   'http': 'http://127.0.0.1:7890',
-                   'https': 'http://127.0.0.1:7890',
                 }
-            )
+           )
+            #response = requests.request(
+            #    "POST",
+            #    url=f"{url}/chat/completions",
+            #    json=payload,
+            #    headers={
+            #        "Authorization": f"Bearer {key}",
+            #        "Content-Type": "application/json"
+            #    },
+            #    proxies = {
+            #       'http': 'http://127.0.0.1:7890',
+            #       'https': 'http://127.0.0.1:7890',
+            #    }
+            #)
 
             # Check for valid response
             response.raise_for_status()
