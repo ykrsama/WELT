@@ -113,7 +113,9 @@ You have access to a user's {{OP_SYSTEM}} computer workspace, use `<code_interfa
 #### Usage Instructions
 
 - The Python code you write can incorporate a wide array of libraries, handle data manipulation or visualization, perform API calls for web-related tasks, or tackle virtually any computational challenge. Use this flexibility to **think outside the box, craft elegant solutions, and harness Python's full potential**.
-- An extra new line is always need between the xml tag and markdown code block
+- An **extra line break** is always needed **between the `<code_interface>` XML tag and markdown code block**.
+- Use the `<code_interface>` XML node and stop right away to wait for user's action.
+- Only one code block is allowd in one `<code_interface>` XML node. DO NOT use two or more markdown code blocks together.
 - Coding style instruction:
   - **Always aim to give meaningful outputs** (e.g., results, tables, summaries, or visuals) to better interpret and verify the findings. Avoid relying on implicit outputs; prioritize explicit and clear print statements so the results are effectively communicated to the user.
    - Run in batch mode. Save figures to png.
@@ -222,7 +224,17 @@ make
 
 DarkSHINE Experiment is a fixed-target experiment to search for dark photons (A') produced in 8 GeV electron-on-target (EOT) collisions. The experiment is designed to detect the invisible decay of dark photons, which escape the detector with missing energy and missing momentum. The DarkSHINE detector consists of Tagging Tracker, Target, Recoil Tracker, Electromagnetic Calorimeter (ECAL), Hadronic Calorimeter (HCAL).
 
-Typical signature of the signal of invisible decay is a single track in the Tagging Tracker and Recoil Tracker, with missing momentum (Recoil Tracker - Tagging Tracker) and missing energy in the ECAL.
+The Target is a thin plate (~350 um) of Tungsten.
+
+Trackers (径迹探测器) are silicon microstrip detector, Tagging Tracker measure the incident beam momentum, Recoil Tracker measures the electric tracks scatter off the target. Missing momentum can be calculated by TagTrk2_pp[0] - RecTrk2_pp[0]
+
+ECAL (电磁量能器) is cubics of LYSO crystal scintillator cells, with high energy precision.
+
+HCAL (强子量能器) is a hybrid of Polystyrene cell and Iron plates, which is a sampling detector.
+
+Because of energy conservation, the total energy deposit in the ECAL and HCAL (if with calibration) will sum up to 8 GeV.
+
+Typical signature of the signal of invisible decay is a single track in the Tagging Tracker and Recoil Tracker, with missing momentum (TagTrk2_pp[0] - RecTrk2_pp[0]) and missing energy in the ECAL.
 
 Bremstruhlung events results in missing momentum, but small missing energy in the ECAL.
 
@@ -315,14 +327,14 @@ import ROOT
 import argparse
 ...
 
-def compare_histograms(branch: str, fig_name: str):
+def compare(branch: str, fig_name: str):
     # create output dir if not exists
-    # draw histogram with pre-selection, and no specified range
-    # overlap histograms of signal and background
+    # draw normalized histogram with pre-selection, and no specified range
+    # overlay histograms of signal and background
     # save to png
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Compare histograms of signal and background events.')
+    parser = argparse.ArgumentParser(description='Compare kinematics of signal and background events.')
     parser.add_argument('--pre-selection', default='', help='Pre-selection to apply')
     parser.add_argument('--log-scale', action='store_true', help='Use log scale for y-axis')
     parser.add_argument('--signal-dir', default='eot/signal/invisible/mAp_100/dp_ana', help='Directory containing signal ROOT files')
@@ -393,12 +405,11 @@ if __name__ == "__main__":
 
 ## Guidelines:
 
-- Provide an overall plan (task list) in markdown to describe how to solve the problem. When planning, don't write code, don't call tools, don't use XML tag.
-- Check the chat history to see if there are anything left that are waiting to be executed by tool. Call tool to solve it.
-- Check if all the tools is running succesfully, if not, solve it by refine and retry the tool.
+- Analyse the chat history to see if there are any question or task left that are waiting to be solved. Then utilizing tools to solve it.
+- Check if previous tool is finished succesfully, if not, solve it by refine and retry the tool.
 - If there are anything unclear, unexpected, or require validation, make it clear by iteratively use tool, until everything is clear with it's own reference (from tool). **DO NOT make ANY assumptions, DO NOT make-up any reply, DO NOT turn to user for information**.
 - Always aim to deliver meaningful insights, iterating if necessary.
-- All responses should be communicated in the chat's primary language, ensuring seamless understanding. If the chat is multilingual, default to English for clarity.
+- All responses should be communicated in the chat's primary language, ensuring seamless understanding.
 
 """
         self.VISION_MODEL_PROMPT: str = """Please briefly explain and analyze this figure. If it's a histogram, also tell if the histogram binning and plotting range is suitable for the dataset."""
@@ -569,7 +580,7 @@ if __name__ == "__main__":
                 msg = messages[i]
                 if msg["role"] == "assistant":
                     # 删除所有running提示
-                    msg["content"].replace('\n<details type="info">\n<summary>Running</summary>\n</details>\n','')
+                    msg["content"].replace('<details type="status">\n<summary>Running...</summary>\nRunning\n</details>','')
 
                     # 用正则匹配所有<details type="user_proxy">内容
                     user_proxy_nodes = re.findall(
@@ -676,6 +687,7 @@ if __name__ == "__main__":
 
                         # 结束条件判断
                         if choice.get("finish_reason") or self.immediate_stop:
+                            log.debug("Finishing chat")
                             if not self.immediate_stop:
                                 res, tag_name = self._filter_response_tag()
                                 yield res
@@ -688,17 +700,6 @@ if __name__ == "__main__":
                             self.current_tag_name = None
                             self.total_response = self.total_response.lstrip("\n")
                             tools = self._find_tool_usage(self.total_response)
-                            ## 防止奇数反引号
-                            # lines = self.total_response.split('\n')
-                            # backtick_count = sum(1 for line in lines if line.startswith('```'))
-                            # if backtick_count % 2 != 0:
-                            #    self.total_response += "\n```\n\n"
-                            #    await asyncio.sleep(0.1)
-                            #    yield "\n"
-                            #    await asyncio.sleep(0.1)
-                            #    yield "```"
-                            #    await asyncio.sleep(0.1)
-                            #    yield"\n\n"
                             # Move total_response to messages
                             messages.append(
                                 {
@@ -711,7 +712,7 @@ if __name__ == "__main__":
                             # Call tools
                             # =================================================
                             if tools is not None:
-                                yield f'\n<details type="info">\n<summary>Running</summary>\n</details>\n'
+                                yield f'\n<details type="status">\n<summary>Running...</summary>\nRunning\n</details>\n'
                                 do_pull = True
                                 user_proxy_reply = ""
                                 for tool in tools:
@@ -727,8 +728,6 @@ if __name__ == "__main__":
                                         # Call Vision Language Model
                                         figure_summary = await self._query_vision_model(self.VISION_MODEL_PROMPT, image_urls)
                                         content += figure_summary
-
-                                    content += "\n\nContinue or stop?"
 
                                     user_proxy_reply += f"{summary}\n\n{content}\n\n"
                                     yield f'\n<details type="user_proxy">\n<summary>{summary}</summary>\n{content}\n</details>\n'
@@ -835,12 +834,14 @@ if __name__ == "__main__":
         self.temp_content += content
         res = ""
         if "<" in self.temp_content:
+            log.debug("detect <")
             # Conver tool calling tags into content (Except code_interface, let openwebui to handle)
             if len(self.temp_content) > 20:
                 if (
                     "<web_search" in self.temp_content
                     or "<knowledge_search" in self.temp_content
                 ):
+                    log.debug("detect <web_serach or <knowledge_search")
                     pattern = re.compile(
                         r"^<(web_search|knowledge_search)\s*([^>]*)>(.*?)</\1>",
                         re.DOTALL | re.MULTILINE,
@@ -864,6 +865,7 @@ if __name__ == "__main__":
                         )
                         self.temp_content = self.temp_content[match.end() :]
                 else:
+                    log.debug("Release temp content")
                     res = self.temp_content
                     self.temp_content = ""
         else:
@@ -892,6 +894,7 @@ if __name__ == "__main__":
         return json.dumps({"error": f"{err_type}: {str(e)}"}, ensure_ascii=False)
 
     async def _web_search(self, attributes: dict, content: str) -> Tuple[str, str]:
+        log.debug("Starting Web Search")
         # Extract the search query from the content
         search_query = content.strip()
 
@@ -992,6 +995,7 @@ if __name__ == "__main__":
         url: str = "https://api.openai.com/v1",
         key: str = "",
     ) -> Optional[List[List[float]]]:
+        log.debug("Generating openai batch embedding")
         try:
             # Construct the API request
             response = await self.client.post(
@@ -1235,6 +1239,7 @@ if __name__ == "__main__":
     async def _code_interface(
         self, attributes: dict, content: str
     ) -> Tuple[str, str]:
+        log.debug("Starting Code Interface")
         if self.code_worker is None:
             self.init_code_worker()
 
@@ -1246,7 +1251,7 @@ if __name__ == "__main__":
         # Remove the first line and the last line (markdown code block)
         lines = content.strip().splitlines()
         if len(lines) <= 2:
-            return "Error: Too few lines to extract code" "Check if you have code in markdown code block"
+            return "Error: Too few lines to extract code", "Check if you have code in markdown code block"
         lines = lines[1:-1]
         content = "\n".join(lines)
 
@@ -1347,10 +1352,10 @@ if __name__ == "__main__":
                 "stream": False,
                 "max_tokens": 512,
                 "stop": None,
-                "temperature": 0.7,
-                "top_p": 0.7,
-                "top_k": 50,
-                "frequency_penalty": 0.5,
+                "temperature": 0.1,
+                "top_p": 0.5,
+                "top_k": 30,
+                "frequency_penalty": 1.1,
                 "n": 1,
                 "response_format": {"type": "text"},
             }
