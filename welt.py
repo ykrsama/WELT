@@ -95,7 +95,7 @@ code here (DO NOT consider xml escaping, e.g. use `<`, DO NOT use `&lt;`)
 
 - `type`: Specifies the action to perform.
    - `exec`: Execute the code immediately.
-      - Supported languages: `python`, `bash`, `root` (root macro), `boss`
+      - Supported languages: `python`, `bash`, `boss`
    - `write`: Write and save the code to a file.
       - Supports any programming language.
 
@@ -104,7 +104,6 @@ code here (DO NOT consider xml escaping, e.g. use `<`, DO NOT use `&lt;`)
 
 #### Usage Instructions
 
-- The Bash script you write can inspect environment, list directory contents, display directory tree structure, display file contents, install depencies, or run any other shell-related tasks. Use this flexibility to **think out of the box, debug by inspecting workspace, or interact with the system**.
 - The Python code you write can incorporate a wide array of libraries, handle data manipulation or visualization, perform API calls for web-related tasks, or tackle virtually any computational challenge. Use this flexibility to **think outside the box, craft elegant solutions, and harness Python's full potential**.
 - Output XML node simply like `<code_interpreter ...>...</code_interpreter>`, DO NOT put XML node inside the markdown code block (```xml). 
 - Coding style instruction:
@@ -112,7 +111,7 @@ code here (DO NOT consider xml escaping, e.g. use `<`, DO NOT use `&lt;`)
    - Run in batch mode. Save figures to file.
    - Prefer object-oriented programming
    - Prefer arguments with default value than hard coded
-   - For potentially time-comsuming code, e.g. loading file with unknown size, use argument to control the running scale, and defaulty run on small scale test.
+   - For potentially time-consuming code, e.g., loading file with unknown size, use argument to control the running scale, and defaulty run on small scale test.
 
 #### Examples
 
@@ -159,7 +158,7 @@ make
 
 #### Tool Attributes
 
-- `engine`: available option:
+- `engine`: available options:
   - `google`: Search on google.
   - `arxiv`: Always use english keywords for arxiv.
 
@@ -175,14 +174,14 @@ make
 """
         self.KNOWLEDGE_SEARCH_PROMPT: str = """Knowledge Search
 
-- You have access to user's database, use `<knowledge_search>` XML tag to search user's internal and personal documens. Example:
+- You have access to user's database, use `<knowledge_search>` XML tag to search user's internal and personal documents. Example:
 
 **Calling Knowledge Search Tool:**
 
 <knowledge_search collection="DarkSHINE_Simulation_Software">one query</knowledge_search>
 
 #### Tool Attributes
-  - `collection`: Available option:
+  - `collection`: Available options:
      - `DarkSHINE_Simulation_Software`: Source code of simulation program based on Geant4 and ROOT, characterized by detector of DarkSHINE experiment. **Must use English to query this collection**.
      - `OpenWebUI_Backend`: Source code of backend of OpenWebUI, an extensible, self-hosted AI interface.
 
@@ -191,7 +190,12 @@ make
 - In each `<knowledge_search>` XML tag, be concise and focused on composing high-quality search query, **avoiding unnecessary elaboration, commentary, or assumptions**.
 - Enclose only one query in one pair of `<knowledge_search collection="...">` `</knowledge_search>` XML tags.
 """
-        self.GUIDE_PROMPT: str = """## Physics Analysis Guide:
+        self.GUIDE_PROMPT: str = """## DarkSHINE Physics Analysis Guide:
+
+### Introduction
+
+DarkSHINE Experiment is a fixed-target experiment to search for dark photons (A') produced in 8 GeV electron-on-target (EOT) collisions. The experiment is designed to detect the invisible decay of dark photons, which escape the detector with missing energy and missing momentum. The DarkSHINE detector consists of Tagging Tracker, Target, Recoil Tracker, Electromagnetic Calorimeter (ECAL), Hadronic Calorimeter (HCAL).
+
 ### Simulation and Reconstruction
 
 1. Configure the beam parameters and detector geometries for the simulation setup
@@ -316,46 +320,26 @@ echo "All done!"
 
 ### Validation
 
-1. Inspect the ROOT file containing the reconstructed data
-2. Plot histograms to compare the signal and background kinematic distributions
+Plot histograms to compare the signal and background kinematic distributions
+
+#### Variables
+
+Tree Name: `dp`
+
+| Branch Name | Type | Description |
+| --- | --- | --- |
+| TagTrk2_pp | Double_t[] | Reconstructed Tagging Tracker momentum [MeV]. TagTrk2_pp[0] - Leading momentum track |
+| TagTrk2_track_No | Int_t | Number of reconstructed Tagging Tracker tracks |
+| TagTrk2_track_chi2 | Double_t[] | Chi2 of reconstructed Tagging Tracker tracks. TagTrk2_track_chi2[0] - Leading momentum track  |
+| RecTrk2_pp | Double_t[] | Reconstructed Recoil Tracker momentum [MeV]. RecTrk2_pp[0] - Leading momentum track |
+| RecTrk2_track_No | Int_t | Number of reconstructed Recoil Tracker Tracks |
+| RecTrk2_track_chi2 | Double_t[] | Chi2 of reconstructed Recoil Tracker tracks. RecTrk2_track_chi2[0] - Leading momentum track |
+| ECAL_E_total | vector<double> | Total energy deposited in the ECAL [MeV]. ECAL_E_total[0] - Truth total energy. ECAL_E_total[1] - Smeard total energy with configuration 1. |
+| ECAL_E_max | vector<double> | Maximum energy deposited of the ECAL Cell [MeV]. ECAL_E_max[0] - Truth maximum energy. ECAL_E_max[1] - Smeard maximum energy with configuration 1. |
+| HCAL_E_total | vector<double> | Total energy deposited in the HCAL [MeV]. HCAL_E_total[0] -  |
+| HCAL_E_Max_Cell | vector<double> | Maximum energy deposited of the HCAL Cell |
 
 Examples:
-
----
-
-User: Inspect tree structure of `eot/background/inclusive/dp_ana/0.root`
-Assistant: <code_interpreter type="exec" lang="python" filename="inspect_trees.py">
-import ROOT
-import argparse
-
-def inspect_trees():
-    # Open the ROOT file
-    root_file = ROOT.TFile.Open(args.filename)
-
-    # Iterate through all keys in the file
-    for key in root_file.GetListOfKeys():
-        obj = key.ReadObj()
-        if obj.InheritsFrom(ROOT.TTree.Class()):
-            tree = obj
-            branches = tree.GetListOfBranches()
-            # Print header for each tree
-            print("Tree Name\tBranch Name\tLeaf Type\tBranch Description")
-            for i in range(branches.GetEntries()):
-                branch = branches.At(i)
-                leaf = branch.GetLeaf(branch.GetName())
-                leaf_type = leaf.GetTypeName() if leaf else "Unknown"
-                print(f"{tree.GetName()}\t{branch.GetName()}\t{leaf_type}\t{branch.GetTitle()}")
-
-    root_file.Close()
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Inspect trees in a ROOT file.')
-    parser.add_argument('filename', nargs='?', default='eot/background/inclusive/dp_ana/0.root', help='Path to the ROOT file (default: %(default)s)')
-    args = parser.parse_args()
-
-    inspect_trees()
-
-</code_interpreter>
 
 ---
 
@@ -416,9 +400,9 @@ import argparse
 def optimize_cut(cut: str, pre_selection: str, signal_dir: str, background_dir: str):
     # load files
     # apply pre-selection when getting histogram of cut variable for signal and background
-    # draw cumulative histograms of the cut varaible
+    # draw cumulative histograms of the cut varaible, save to figure with distinctable filename
     # calculate `S/sqrt(S+B)` for each cut value
-    # draw S/sqrt(S+B) vs cut value
+    # draw S/sqrt(S+B) vs cut value, save to figure with distinctble filename
     # print the cut value, cut efficiency and significance for the optimized cut
 
 if __name__ == "__main__":
@@ -455,6 +439,7 @@ But never output something like:
 ```
 
 """
+        self.VISION_MODEL_PROMPT: str = """Please explain and analyze this figure. If it's a histogram, also judge if the histogram binning and plotting range is suitable for the dataset"""
 
         self.TOOL = {}
         self.prompt_templates = {}
@@ -620,6 +605,18 @@ But never output something like:
 
             self._set_system_prompt(messages)
 
+            # 检查最后一条user消息是否包含图片
+            if messages[-1]["role"] == "user":
+                content = messages[-1]["content"]
+                if isinstance(content, List):
+                    for c in content:
+                        if c.get("type", "") == "image":
+                            image_url = c.get("image_url", {}).get("url", "")
+                            if image_url:
+                                # Query vision language model
+                                # insert to message content
+
+
             # yield json.dumps(payload, ensure_ascii=False)
             log.debug("Old message:")
             log.debug(messages)
@@ -707,6 +704,8 @@ But never output something like:
                                     )
                                     user_proxy_reply += f"{summary}\n\n{content}\n\n"
                                     await asyncio.sleep(0.5)
+                                    # Check if content contains figures
+                                    # Call Vision Language Model
                                     yield f'\n<details type="user_proxy">\n<summary>{summary}</summary>\n{content}\n</details>\n'
 
                                 messages.append(
@@ -959,76 +958,6 @@ But never output something like:
             f"Search engine: {engine}\nQuery:{search_query}",
         )
 
-    async def _code_interpreter(
-        self, attributes: dict, content: str
-    ) -> Tuple[str, str]:
-        if self.code_worker is None:
-            self.init_code_worker()
-
-        # Extract the code interpreter type and language
-        code_type = attributes.get("type", "")
-        lang = attributes.get("lang", "")
-        filename = attributes.get("filename", "")
-        if code_type == "exec":
-            # Execute the code
-            if filename:
-                try:
-                    result = self.code_worker.write_code(
-                        file_path=filename,
-                        content=content,
-                        execute=True,
-                        lang=lang,
-                        timeout=300,
-                    )
-                    return f"Executed code: {filename}", result
-                except Exception as e:
-                    return f"Error executing {filename}", f"{str(e)}"
-            elif lang == "bash":
-                try:
-                    result = self.code_worker.run_command(command=content, timeout=300)
-                    return "Command executed", result
-                except Exception as e:
-                    return "Error executing bash command", f"{str(e)}"
-            else:
-                return "No filename provided for code execution", "Please provide filename in xml attribute."
-
-        elif code_type == "write":
-            if not filename:
-                return "No filename provided for code writing", "Please provide filename in xml attribute."
-            # Write the code to a file
-            try:
-                result = self.code_worker.write_code(
-                    file_path=filename, content=content
-                )
-                return f"Written file: {filename}", result
-            except Exception as e:
-                return f"Error writing {filename}", f"{str(e)}"
-
-        elif code_type == "search_replace":
-            if not filename:
-                return "No filename provided for code search and replace", "Please provide filename in xml attribute."
-            # extract the original and updated code
-            edit_block_pattern = re.compile(
-                r"<<<<<<< ORIGINAL\s*(?P<original>.*?)"
-                r"=======\s*(?P<mid>.*?)"
-                r"\s*(?P<updated>.*)>>>>>>> ",
-                re.DOTALL,
-            )
-            match = edit_block_pattern.search(content)
-            if match:
-                original = match.group("original")
-                updated = match.group("updated")
-                try:
-                    result = self.code_worker.search_replace(
-                        file_path=filename, original=original, updated=updated
-                    )
-                    return f"Updated {filename}", result
-                except Exception as e:
-                    return f"Error searching and replacing {filename}", f"{str(e)}"
-            else:
-                return "Invalid search and replace format", "Format: <<<<<<< ORIGINAL\nOriginal code\n=======\nUpdated code\n>>>>>>> UPDATED"
-        else:
-            return f"Invalid code interpreter type `{code_type}`", "Available types: `exec`, `write`"
 
     async def _generate_openai_batch_embeddings(
         self,
@@ -1277,3 +1206,139 @@ But never output something like:
         except Exception as e:
             log.error(f"Error initializing code worker: {e}")
 
+    async def _code_interpreter(
+        self, attributes: dict, content: str
+    ) -> Tuple[str, str]:
+        if self.code_worker is None:
+            self.init_code_worker()
+
+        # Extract the code interpreter type and language
+        code_type = attributes.get("type", "")
+        lang = attributes.get("lang", "")
+        filename = attributes.get("filename", "")
+        if code_type == "exec":
+            # Execute the code
+            if filename:
+                try:
+                    result = self.code_worker.write_code(
+                        file_path=filename,
+                        content=content,
+                        execute=True,
+                        lang=lang,
+                        timeout=300,
+                    )
+                    return f"Executed code: {filename}", result
+                except Exception as e:
+                    return f"Error executing {filename}", f"{str(e)}"
+            elif lang == "bash":
+                try:
+                    result = self.code_worker.run_command(command=content, timeout=300)
+                    return "Command executed", result
+                except Exception as e:
+                    return "Error executing bash command", f"{str(e)}"
+            else:
+                return "No filename provided for code execution", "Please provide filename in xml attribute."
+
+        elif code_type == "write":
+            if not filename:
+                return "No filename provided for code writing", "Please provide filename in xml attribute."
+            # Write the code to a file
+            try:
+                result = self.code_worker.write_code(
+                    file_path=filename, content=content
+                )
+                return f"Written file: {filename}", result
+            except Exception as e:
+                return f"Error writing {filename}", f"{str(e)}"
+
+        elif code_type == "search_replace":
+            if not filename:
+                return "No filename provided for code search and replace", "Please provide filename in xml attribute."
+            # extract the original and updated code
+            edit_block_pattern = re.compile(
+                r"<<<<<<< ORIGINAL\s*(?P<original>.*?)"
+                r"=======\s*(?P<mid>.*?)"
+                r"\s*(?P<updated>.*)>>>>>>> ",
+                re.DOTALL,
+            )
+            match = edit_block_pattern.search(content)
+            if match:
+                original = match.group("original")
+                updated = match.group("updated")
+                try:
+                    result = self.code_worker.search_replace(
+                        file_path=filename, original=original, updated=updated
+                    )
+                    return f"Updated {filename}", result
+                except Exception as e:
+                    return f"Error searching and replacing {filename}", f"{str(e)}"
+            else:
+                return "Invalid search and replace format", "Format: <<<<<<< ORIGINAL\nOriginal code\n=======\nUpdated code\n>>>>>>> UPDATED"
+        else:
+            return f"Invalid code interpreter type `{code_type}`", "Available types: `exec`, `write`"
+
+    # ======================
+    # Vision Language Model
+    # ----------------------
+
+    async def _generate_vl_response(
+        self,
+        prompt: str,
+        image_url: str,
+        model: str,
+        url: str = "https://api.openai.com/v1",
+        key: str = "",
+    ) -> str:
+        try:
+            payload = {
+                "model": model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": image_url,
+                                    "detail": "high"
+                                }
+                            },
+                            {
+                                "type": "text",
+                                "content": prompt,
+                            }
+                        ]
+                    }
+                ],
+                "stream": False,
+                "response_format": {"type": "text"},
+            }
+            # Construct the API request
+            response = await self.client.post(
+                f"{url}/chat/completions",
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {key}"
+                    "Content-Type": "application/json"
+                }
+            )
+
+            # Check for valid response
+            response.raise_for_status()
+
+            # Parse and return embeddings if available
+            data = response.json()
+            return response.text
+
+        except httpx.HTTPStatusError as e:
+            log.error(
+                f"HTTP error occurred: {e.response.status_code} - {e.response.text}"
+            )
+        except Exception as e:
+            log.error(f"An error occurred while generating embeddings: {str(e)}")
+
+        return ""
+
+    async def _query_vision_model(
+        self
+    )
