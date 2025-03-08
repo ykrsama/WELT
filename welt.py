@@ -82,7 +82,11 @@ class Pipe:
         self.valves = self.Valves()
         self.data_prefix = "data:"
         self.max_loop = self.valves.MAX_LOOP  # Save moneya
-        self.client = httpx.AsyncClient(http2=True)
+        self.client = httpx.AsyncClient(
+                http2=True,
+                proxy="http://127.0.0.1:7890",
+                timeout=None
+        )
         self.CODE_INTERPRETER_PROMPT: str = """Code Interpreter
 
 You have access to a user's {{OP_SYSTEM}} code workspace, use `<code_interpreter>` XML tag to write codes to do analysis, calculations, or problem-solving. Here's how it works:
@@ -113,9 +117,7 @@ code here (DO NOT consider xml escaping, e.g. use `<`, DO NOT use `&lt;`)
    - Prefer arguments with default value than hard coded
    - For potentially time-consuming code, e.g., loading file with unknown size, use argument to control the running scale, and defaulty run on small scale test.
 
-#### Examples
-
----
+#### Examples Begin
 
 User: plot something
 Assistant: ...
@@ -144,7 +146,7 @@ make
 ./MyExecutable
 </code_interpreter>
 
----
+#### Examples End
 
 """
         self.WEB_SEARCH_PROMPT: str = """Web Search
@@ -216,9 +218,7 @@ DarkSHINE Experiment is a fixed-target experiment to search for dark photons (A'
    2. Simulate background events
    3. Reconstruct background events
 
-Examples:
-
----
+#### Examples Begin
 
 User: For DarkSHINE (electron-on-target), generate and reconstruct 100 dark photon invisible decay signal events per signal mass
 Assistant: Scan dark photon mass mAp, and output simulation files to eot/signal/invisible/mAp_*/dp_simu/0.root
@@ -316,7 +316,7 @@ echo "All done!"
 
 </code_interpreter>
 
----
+#### Examples End
 
 ### Validation
 
@@ -339,9 +339,7 @@ Tree Name: `dp`
 | HCAL_E_total | vector<double> | Total energy deposited in the HCAL [MeV]. HCAL_E_total[0] -  |
 | HCAL_E_Max_Cell | vector<double> | Maximum energy deposited of the HCAL Cell |
 
-Examples:
-
----
+#### Examples Begin
 
 User: Compare the `ECAL_E_total[0]` of signal and background events
 Assistant: <code_interpreter type="exec" lang="python" filename="compare_histograms.py">
@@ -370,7 +368,7 @@ Assistant: Re-using compareHistograms.C
 python compareHistograms.py HCAL_E_total[0]
 </code_interpreter>
 
----
+#### Examples End
 
 ### Cut-based Analysis
 
@@ -387,9 +385,7 @@ python compareHistograms.py HCAL_E_total[0]
 
 - If exists multiple signal regions, signal regions should be orthogonal to each other
 
-#### Examples
-
----
+#### Examples Begin
 
 User: Optimize cut of `ECAL_E_total[0]` with pre-selection `TagTrk2_track_No == 1 && RecTrk2_track_No == 1`
 Assistant: <code_interpreter type="exec" lang="python" filename="optimize_cut.py">
@@ -417,7 +413,7 @@ if __name__ == "__main__":
 
 </code_interpreter>
 
----
+#### Examples End
 
 ## Task:
 
@@ -439,7 +435,7 @@ But never output something like:
 ```
 
 """
-        self.VISION_MODEL_PROMPT: str = """Please explain and analyze this figure. If it's a histogram, also judge if the histogram binning and plotting range is suitable for the dataset"""
+        self.VISION_MODEL_PROMPT: str = """Please briefly explain and analyze this figure. If it's a histogram, also tell if the histogram binning and plotting range is suitable for the dataset."""
 
         self.TOOL = {}
         self.prompt_templates = {}
@@ -541,6 +537,67 @@ But never output something like:
 
             messages = payload["messages"]
 
+            # 检查最后一条user消息是否包含图片
+            log.debug("Checking last user message for images")
+            if messages[-1]["role"] == "user":
+                content = messages[-1]["content"]
+                if isinstance(content, List):
+                    text_content = ""
+                    # 查找文字内容
+                    for c in content:
+                        if c.get("type", "") == "text":
+                            text_content = c.get("text", "")
+                            log.debug(f"Found text in last user message: {text_content}")
+                            break
+
+                    # 查找图片内容
+                    for c in content:
+                        if c.get("type", "") == "image_url":
+                            log.debug("Found image in last user message")
+                            image_url = c.get("image_url", {}).get("url", "")
+                            if image_url:
+                                if image_url.startswith("data:image"):
+                                    log.debug("Image URL is a data URL")
+                                else:
+                                    log.debug(f"Image URL: {image_url}")
+                                # Query vision language model
+                                vision_summary = await self._query_vision_model(
+                                    self.VISION_MODEL_PROMPT, [image_url]
+                                )
+                                # insert to message content
+                                text_content += vision_summary
+                    # 替换消息
+                    messages[-1]["content"] = text_content
+                else:
+                    image_urls = self._extract_image_urls(content)
+                    if image_urls:
+                        log.debug(f"Found image in last user message: {image_urls}")
+                        # Call Vision Language Model
+                        vision_summary = await self._query_vision_model(
+                            self.VISION_MODEL_PROMPT, image_urls
+                        )
+                        content += vision_summary
+                        messages[-1]["content"] = content
+
+            # 确保user message是text-only
+            log.debug("Checking all user messages content format")
+            for msg in messages:
+                if msg["role"] == "user":
+                    content = msg["content"]
+                    if isinstance(content, List):
+                        log.debug("Found a list of content in user message")
+                        text_content = ""
+                        # 查找文字内容
+                        for c in content:
+                            if c.get("type", "") == "text":
+                                text_content = c.get("content", "")
+                                log.debug(f"Found text in user message: {text_content}")
+                                break
+
+                        # 替换消息
+                        log.debug("Replacing user message content")
+                        msg["content"] = text_content
+
             # User proxy转移到User 角色
             i = 0
             while i < len(messages):
@@ -605,21 +662,9 @@ But never output something like:
 
             self._set_system_prompt(messages)
 
-            # 检查最后一条user消息是否包含图片
-            if messages[-1]["role"] == "user":
-                content = messages[-1]["content"]
-                if isinstance(content, List):
-                    for c in content:
-                        if c.get("type", "") == "image":
-                            image_url = c.get("image_url", {}).get("url", "")
-                            if image_url:
-                                # Query vision language model
-                                # insert to message content
-
-
             # yield json.dumps(payload, ensure_ascii=False)
             log.debug("Old message:")
-            log.debug(messages)
+            log.debug(messages[1:])
 
             # 发起API请求
             do_pull = True
@@ -694,18 +739,27 @@ But never output something like:
                                 }
                             )
                             self.total_response = ""
+                            # =================================================
+                            # Call tools
+                            # =================================================
                             if tools is not None:
                                 do_pull = True
-                                # Call tools
                                 user_proxy_reply = ""
                                 for tool in tools:
                                     summary, content = await self.TOOL[tool["name"]](
                                         tool["attributes"], tool["content"]
                                     )
-                                    user_proxy_reply += f"{summary}\n\n{content}\n\n"
                                     await asyncio.sleep(0.5)
+
                                     # Check if content contains figures
-                                    # Call Vision Language Model
+                                    image_urls = self._extract_image_urls(content)
+
+                                    if image_urls:
+                                        # Call Vision Language Model
+                                        figure_summary = await self._query_vision_model(self.VISION_MODEL_PROMPT, image_urls)
+                                        content += figure_summary
+
+                                    user_proxy_reply += f"{summary}\n\n{content}\n\n"
                                     yield f'\n<details type="user_proxy">\n<summary>{summary}</summary>\n{content}\n</details>\n'
 
                                 messages.append(
@@ -770,7 +824,7 @@ But never output something like:
 
                             else:
                                 yield content
-                log.debug(messages)
+                log.debug(messages[1:])
                 count += 1
         except Exception as e:
             yield self._format_exception(e)
@@ -1188,12 +1242,12 @@ But never output something like:
             context_message = {"role": "system", "content": result}
             messages.insert(0, context_message)
 
-        log.debug("Current System Prompt:")
-        log.debug(result)
+        #log.debug("Current System Prompt:")
+        #log.debug(result)
 
-    # ===================
+    # =========================================================================
     # Code Interpreter
-    # -------------------
+    # =========================================================================
     def init_code_worker(self):
         try:
             self.code_worker = HRModel.connect(
@@ -1277,49 +1331,60 @@ But never output something like:
         else:
             return f"Invalid code interpreter type `{code_type}`", "Available types: `exec`, `write`"
 
-    # ======================
+    # =========================================================================
     # Vision Language Model
-    # ----------------------
+    # =========================================================================
 
     async def _generate_vl_response(
         self,
         prompt: str,
         image_url: str,
-        model: str,
-        url: str = "https://api.openai.com/v1",
+        model: str = "Qwen/Qwen2-VL-72B-Instruct",
+        url: str = "https://api.siliconflow.cn/v1",
         key: str = "",
     ) -> str:
         try:
             payload = {
                 "model": model,
                 "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": image_url,
-                                    "detail": "high"
-                                }
-                            },
-                            {
-                                "type": "text",
-                                "content": prompt,
-                            }
-                        ]
-                    }
-                ],
+                     {
+                         "role": "user",
+                         "content": [
+                             {
+                                 "type": "image_url",
+                                 "image_url": {
+                                     "url": image_url,
+                                     "detail": "high"
+                                 }
+                             },
+                             {
+                                 "type": "text",
+                                 "text": prompt,
+                             }
+                         ]
+                     }
+                 ],
                 "stream": False,
+                "max_tokens": 512,
+                "stop": None,
+                "temperature": 0.7,
+                "top_p": 0.7,
+                "top_k": 50,
+                "frequency_penalty": 0.5,
+                "n": 1,
                 "response_format": {"type": "text"},
             }
-            # Construct the API request
-            response = await self.client.post(
-                f"{url}/chat/completions",
+            response = requests.request(
+                "POST",
+                url=f"{url}/chat/completions",
                 json=payload,
                 headers={
-                    "Authorization": f"Bearer {key}"
+                    "Authorization": f"Bearer {key}",
                     "Content-Type": "application/json"
+                },
+                proxies = {
+                   'http': 'http://127.0.0.1:7890',
+                   'https': 'http://127.0.0.1:7890',
                 }
             )
 
@@ -1328,17 +1393,69 @@ But never output something like:
 
             # Parse and return embeddings if available
             data = response.json()
-            return response.text
+            return data["choices"][0]["message"]["content"]
 
         except httpx.HTTPStatusError as e:
-            log.error(
-                f"HTTP error occurred: {e.response.status_code} - {e.response.text}"
-            )
-        except Exception as e:
-            log.error(f"An error occurred while generating embeddings: {str(e)}")
+            log.error(f"HTTP error occurred: {e.response.status_code} - {e.response.text}")
+            return f"HTTP error occurred: {e.response.status_code} - {e.response.text}"
+        except httpx.ReadTimeout as e:
+            log.error(f"Read Timeout error occurred")
+            return f"Read Timeout error occurred"
 
         return ""
 
+    def _extract_image_urls(self, text: str) -> list:
+        """
+        Extract image URLs from text with 2 criteria:
+        1. URLs ending with .png/.jpeg/.jpg/.gif/.svg (case insensitive)
+        2. URLs in markdown image format regardless of extension
+        
+        Args:
+            text: Input text containing potential image URLs
+            
+        Returns:
+            List of unique image URLs sorted by first occurrence
+        """
+        # Match URLs with image extensions (including query parameters)
+        ext_pattern = re.compile(
+            r'https?:\/\/[^\s]+?\.(?:png|jpe?g|gif|svg)(?:\?[^\s]*)?(?=\s|$)', 
+            re.IGNORECASE
+        )
+        
+        # Match markdown image syntax URLs
+        md_pattern = re.compile(
+            r'!\[[^\]]*\]\((https?:\/\/[^\s\)]+)'
+        )
+        
+        # Find all matches while preserving order
+        seen = set()
+        result = []
+        
+        for match in ext_pattern.findall(text) + md_pattern.findall(text):
+            if match not in seen:
+                seen.add(match)
+                result.append(match)
+        
+        return result
+
     async def _query_vision_model(
-        self
-    )
+        self,
+        prompt: str,
+        image_urls: List[str],
+    ) -> str:
+        response = ""
+        i = 1
+        for url in image_urls:
+            if not url.startswith("data:image"):
+                log.debug(f"Processing image {i}: {url}")
+            fig_name = f"Figure {i}:"
+            vl_res = await self._generate_vl_response(
+                prompt=prompt,
+                image_url=url,
+                model="Qwen/Qwen2-VL-72B-Instruct",
+                url=self.valves.DEEPSEEK_API_BASE_URL,
+                key=self.valves.DEEPSEEK_API_KEY
+            )
+            response += f"\n\n{fig_name}\n\n{vl_res}"
+        return response
+
