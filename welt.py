@@ -66,7 +66,7 @@ class Pipe:
             default="deepseek-reasoner",
             description="API请求的模型名称，默认为 deepseek-reasoner ",
         )
-        USE_CODE_INTERPRETER: bool = Field(default=True)
+        USE_CODE_INTERFACE: bool = Field(default=True)
         USE_WEB_SEARCH: bool = Field(default=True)
         USE_KNOWLEDGE_SEARCH: bool = Field(default=True)
         EMBEDDING_BATCH_SIZE: int = Field(
@@ -87,20 +87,24 @@ class Pipe:
                 proxy="http://127.0.0.1:7890",
                 timeout=None,
         )
-        self.CODE_INTERPRETER_PROMPT: str = """Code Interpreter
+        self.CODE_INTERFACE_PROMPT: str = """Code Interface
 
-You have access to a user's {{OP_SYSTEM}} code workspace, use `<code_interpreter>` XML tag to write codes to do analysis, calculations, or problem-solving. Here's how it works:
+You have access to a user's {{OP_SYSTEM}} computer workspace, use `<code_interface>` XML tag to write codes to do analysis, calculations, or problem-solving. Here's how it works:
 
-<code_interpreter type="exec" lang="bash" filename="">
-code here (DO NOT consider xml escaping, e.g. use `<`, DO NOT use `&lt;`)
-</code_interpreter>
+<code_interface type="exec" lang="bash" filename="">
+
+```bash
+# code here
+```
+
+</code_interface>
 
 #### Tool Attributes
 
 - `type`: Specifies the action to perform.
-   - `exec`: Execute the code immediately.
-      - Supported languages: `python`, `bash`, `boss`
-   - `write`: Write and save the code to a file.
+   - `exec`: Write code and execute the code immediately.
+      - Supported languages: `python`, `bash`, `root` (root macro), `boss`
+   - `write`: Simply write to file.
       - Supports any programming language.
 
 - `filename`: The file path where the code will be written.  
@@ -109,10 +113,10 @@ code here (DO NOT consider xml escaping, e.g. use `<`, DO NOT use `&lt;`)
 #### Usage Instructions
 
 - The Python code you write can incorporate a wide array of libraries, handle data manipulation or visualization, perform API calls for web-related tasks, or tackle virtually any computational challenge. Use this flexibility to **think outside the box, craft elegant solutions, and harness Python's full potential**.
-- Output XML node simply like `<code_interpreter ...>...</code_interpreter>`, DO NOT put XML node inside the markdown code block (```xml). 
+- An extra new line is always need between the xml tag and markdown code block
 - Coding style instruction:
   - **Always aim to give meaningful outputs** (e.g., results, tables, summaries, or visuals) to better interpret and verify the findings. Avoid relying on implicit outputs; prioritize explicit and clear print statements so the results are effectively communicated to the user.
-   - Run in batch mode. Save figures to file.
+   - Run in batch mode. Save figures to png.
    - Prefer object-oriented programming
    - Prefer arguments with default value than hard coded
    - For potentially time-consuming code, e.g., loading file with unknown size, use argument to control the running scale, and defaulty run on small scale test.
@@ -122,29 +126,49 @@ code here (DO NOT consider xml escaping, e.g. use `<`, DO NOT use `&lt;`)
 User: plot something
 Assistant: ...
 **Calling Code Intepreter:**
-<code_interpreter type="exec" lang="python" filename="plot.py">
-# plotting code here
-</code_interpreter>
+<code_interface type="exec" lang="python" filename="plot.py">
+
+```python
+# plot and save png figure to a relative path
+```
+
+</code_interface>
 
 ---
 
 User: Create and test a simple cmake project named HelloWorld
 Assistant: ...
 **Calling Code Intepreter:**
-<code_interpreter type="save" lang="cmake" filename="HelloWorld/CMakeList.txt">
+
+<code_interface type="write" lang="cmake" filename="HelloWorld/CMakeList.txt">
+
+```cmake
 ...
-</code_interpreter>
-<code_interpreter type="save" lang="c++" filename="HelloWorld/src/main.cpp">
+```
+
+</code_interface>
+
+<code_interface type="write" lang="cpp" filename="HelloWorld/src/main.cpp">
+
+```cpp
 ...
-</code_interpreter>
-<code_interpreter type="exec" lang="bash" filename="HelloWorld/build_and_test.sh">
+```
+
+</code_interface>
+
+<code_interface type="exec" lang="bash" filename="HelloWorld/build_and_test.sh">
+
+```bash
+#!/bin/bash
 # assume run in parent directory of filename
 mkdir -p build
 cd build
 cmake ..
 make
 ./MyExecutable
-</code_interpreter>
+```
+
+</code_interface>
 
 #### Examples End
 
@@ -198,6 +222,14 @@ make
 
 DarkSHINE Experiment is a fixed-target experiment to search for dark photons (A') produced in 8 GeV electron-on-target (EOT) collisions. The experiment is designed to detect the invisible decay of dark photons, which escape the detector with missing energy and missing momentum. The DarkSHINE detector consists of Tagging Tracker, Target, Recoil Tracker, Electromagnetic Calorimeter (ECAL), Hadronic Calorimeter (HCAL).
 
+Typical signature of the signal of invisible decay is a single track in the Tagging Tracker and Recoil Tracker, with missing momentum (Recoil Tracker - Tagging Tracker) and missing energy in the ECAL.
+
+Bremstruhlung events results in missing momentum, but small missing energy in the ECAL.
+
+Usually SM electron-nuclear or photon-nuclear process will create multiple tracks in the recoil tracker, thus not mis identified as signal, but still are a ratio of events passing the track number selection, and with MIP particles in the final states, becoming background. They can be veto by the HCAL with a HCAL Max Cell Energy cut (signal region defined by HCAL Max Cell energy lower than some value).
+
+Process with neutrino will be irreducible background, however with ignorable branching ratio.
+
 ### Simulation and Reconstruction
 
 1. Configure the beam parameters and detector geometries for the simulation setup
@@ -220,101 +252,35 @@ DarkSHINE Experiment is a fixed-target experiment to search for dark photons (A'
 
 #### Examples Begin
 
-User: For DarkSHINE (electron-on-target), generate and reconstruct 100 dark photon invisible decay signal events per signal mass
-Assistant: Scan dark photon mass mAp, and output simulation files to eot/signal/invisible/mAp_*/dp_simu/0.root
-<code_interpreter type="exec" lang="bash" filename="signal_invisible_decay_eot.sh">
-#!/bin/bash
-
-# Set the base directory for the simulation
-base_dir=$PWD/eot/signal/invisible
-mkdir -p $base_dir
-
-# Set the original config file directory
-dsimu_script_dir="/opt/darkshine-simulation/source/DP_simu/scripts"
-default_yaml="$dsimu_script_dir/default.yaml"
-magnet_file="$dsimu_script_dir/magnet_0.75_20240521.root"
-signal_lut="$dsimu_script_dir/dp_E4_W_LUT_20240327.root"
-
-# Prepare reconstruction config file
-DAna -x > $base_dir/config.txt
-
-# Scan over dark photon mass mAp
-for mAp in 10 20 50 100 200 500 1000; do
-    echo "Processing mAp = ${mAp} MeV"
-    # Create and goto directory for each mA
-    cur_dir=$base_dir/mAp_${mAp}
-    mkdir -p $cur_dir/dp_simu
-    mkdir -p $cur_dir/dp_ana
-    cd $cur_dir
-
-    # Prepare config file for simulation
-    echo "-- Preparing simulation config"
-    sed -e "s:signal_production\::signal_production\: true  \#:" \
-        -e "s:signal_mass\::signal_mass\: \[${mAp},\"MeV\"\]  \#:" \
-        -e "s:signal_lookup_table\::signal_lookup_table\: \"${signal_lut}\"  \#:" \
-        -e "s:  mag_field_input\::  mag_field_input\: \"${magnet_file}\"  \#:" \
-        $default_yaml > default.yaml
-
-    # Run Simulation
-    echo "-- Running simulation"
-    DSimu -y default.yaml -b 100 -f dp_simu/0.root > simu.out 2> simu.err
-
-    # Prepare reconstruction config file
-    echo "-- Preparing reconstruction config"
-    sed -e "s:InputFile:InputFile = dp_simu/0.root  \#:" \
-        -e "s:InputGeoFile:InputGeoFile = dp_simu/0.root  \#:" \
-        -e "s:OutputFile:OutputFile = dp_ana/0.root  \#:" \
-        $base_dir/config.txt > $cur_dir/config.txt
-
-    # Reconstruction
-    echo "-- Running reconstruction"
-    DAna -c config.txt > ana.out 2> ana.err
-done
-
-echo "All done!"
-
-</code_interpreter>
-
 ---
 
 User: For DarkSHINE, simulate and reconstruct inclusive background events
-Assistant: <code_interpreter type="exec" lang="bash" filename="background_inclusive_eot.sh">
-#!/bin/bash
+Assistant: <code_interface type="exec" lang="bash" filename="background_inclusive_eot.sh">
 
-# Set the base directory for the simulation
-base_dir=$PWD/eot/background/inclusive
-mkdir -p $base_dir/dp_simu
-mkdir -p $base_dir/dp_ana
-cd $base_dir
+```bash
+#!/bin/bash
 
 # Set the original config file directory
 dsimu_script_dir="/opt/darkshine-simulation/source/DP_simu/scripts"
 default_yaml="$dsimu_script_dir/default.yaml"
 magnet_file="$dsimu_script_dir/magnet_0.75_20240521.root"
-DAna -x > config_temp.txt
 
-# Prepare config file for simulation
 echo "-- Preparing simulation config"
 sed "s:  mag_field_input\::  mag_field_input\: \"${magnet_file}\"  \#:" $default_yaml > default.yaml
 
-# Run Simulation
-echo "-- Running simulation"
-DSimu -y default.yaml -b 100 -f dp_simu/0.root > simu.out 2> simu.err
+echo "-- Running simulation and output to dp_simu.root"
+DSimu -y default.yaml -b 100 -f dp_simu.root > simu.out 2> simu.err
 
-# Prepare reconstruction config file
-echo "-- Preparing reconstruction config"
-sed -e "s:InputFile:InputFile = dp_simu/0.root  \#:" \
-    -e "s:InputGeoFile:InputGeoFile = dp_simu/0.root  \#:" \
-    -e "s:OutputFile:OutputFile = dp_ana/0.root  \#:" \
-    config_temp.txt > config.txt
+echo "-- Preparing reconstruction config (default input dp_simu.root and output dp_ana.root)"
+DAna -x > config.txt
 
-# Reconstruction
-echo "-- Running reconstruction"
-DAna -c config.txt > ana.out 2> ana.err
+echo "-- Running reconstruction and output to dp_ana.root"
+DAna -c config.txt
 
 echo "All done!"
+```
 
-</code_interpreter>
+</code_interface>
 
 #### Examples End
 
@@ -322,7 +288,7 @@ echo "All done!"
 
 Plot histograms to compare the signal and background kinematic distributions
 
-#### Variables
+#### Kinematic Variables
 
 Tree Name: `dp`
 
@@ -336,37 +302,39 @@ Tree Name: `dp`
 | RecTrk2_track_chi2 | Double_t[] | Chi2 of reconstructed Recoil Tracker tracks. RecTrk2_track_chi2[0] - Leading momentum track |
 | ECAL_E_total | vector<double> | Total energy deposited in the ECAL [MeV]. ECAL_E_total[0] - Truth total energy. ECAL_E_total[1] - Smeard total energy with configuration 1. |
 | ECAL_E_max | vector<double> | Maximum energy deposited of the ECAL Cell [MeV]. ECAL_E_max[0] - Truth maximum energy. ECAL_E_max[1] - Smeard maximum energy with configuration 1. |
-| HCAL_E_total | vector<double> | Total energy deposited in the HCAL [MeV]. HCAL_E_total[0] -  |
-| HCAL_E_Max_Cell | vector<double> | Maximum energy deposited of the HCAL Cell |
+| HCAL_E_total | vector<double> | Total energy deposited in the HCAL [MeV]. HCAL_E_total[0] - Truth total energy. HCAL_E_total[1] - Smeard total energy with configuration 1. |
+| HCAL_E_Max_Cell | vector<double> | Maximum energy deposited of the HCAL Cell [MeV]. HCAL_E_Max_Cell[0] - Truth maximum energy. HCAL_E_Max_Cell[1] - Smeard maximum energy with configuration 1. |
 
 #### Examples Begin
 
-User: Compare the `ECAL_E_total[0]` of signal and background events
-Assistant: <code_interpreter type="exec" lang="python" filename="compare_histograms.py">
+User: Compare varaibles of signal and background events
+Assistant: <code_interface type="exec" lang="python" filename="compare_kinematics.py">
+
+```python
 import ROOT
 import argparse
 ...
 
-def compare_histograms(branch: str, pre_selection: str, log_scale: bool, signal_dir: str, background_dir: str):
-    # overlap histograms and with automatic range
+def compare_histograms(branch: str, fig_name: str):
+    # create output dir if not exists
+    # draw histogram with pre-selection, and no specified range
+    # overlap histograms of signal and background
+    # save to png
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Compare histograms of signal and background events.')
-    parser.add_argument('branch', nargs='?', default='ECAL_E_total[0]', help='Branch name to compare (default: %(default)s)')
-    parser.add_argument('--pre-selection', default='', help='Pre-selection to apply (default: %(default)s)')
+    parser.add_argument('--pre-selection', default='', help='Pre-selection to apply')
     parser.add_argument('--log-scale', action='store_true', help='Use log scale for y-axis')
-    parser.add_argument('--signal-dir', default='eot/signal/invisible/mAp_100/dp_ana', help='Directory containing signal ROOT files (default: %(default)s)')
-    parser.add_argument('--background-dir', default='eot/background/inclusive/dp_ana', help='Directory containing background ROOT files (default: %(default)s)')
+    parser.add_argument('--signal-dir', default='eot/signal/invisible/mAp_100/dp_ana', help='Directory containing signal ROOT files')
+    parser.add_argument('--background-dir', default='eot/background/inclusive/dp_ana', help='Directory containing background ROOT files')
+    parser.add_argument('--out-dir', default='plots/png', help='Output directory for plots')
     args = parser.parse_args()
+    
+    # Loop for kinematic variables, save png with distinctable filename
 
-    compare_histograms(args.branch, args.pre_selection, args.log_scale, args.signal_dir, args.background_dir)
+```
 
-</code_interpreter>
-User: Alos plot `HCAL_E_total[0]`
-Assistant: Re-using compareHistograms.C
-<code_interpreter type="exec" lang="bash" filename="plot_HCAL_E_total_0.sh">
-python compareHistograms.py HCAL_E_total[0]
-</code_interpreter>
+</code_interface>
 
 #### Examples End
 
@@ -387,8 +355,10 @@ python compareHistograms.py HCAL_E_total[0]
 
 #### Examples Begin
 
-User: Optimize cut of `ECAL_E_total[0]` with pre-selection `TagTrk2_track_No == 1 && RecTrk2_track_No == 1`
-Assistant: <code_interpreter type="exec" lang="python" filename="optimize_cut.py">
+User: Optimize cut of `ECAL_E_total[0]` with 1 track cut.
+Assistant: <code_interface type="exec" lang="python" filename="optimize_cut.py">
+
+```python
 import ROOT
 import argparse
 ...
@@ -396,28 +366,30 @@ import argparse
 def optimize_cut(cut: str, pre_selection: str, signal_dir: str, background_dir: str):
     # load files
     # apply pre-selection when getting histogram of cut variable for signal and background
-    # draw cumulative histograms of the cut varaible, save to figure with distinctable filename
+    # draw cumulative histograms of the cut varaible, save to png with distinctable filename
     # calculate `S/sqrt(S+B)` for each cut value
-    # draw S/sqrt(S+B) vs cut value, save to figure with distinctble filename
+    # draw S/sqrt(S+B) vs cut value, save to png with distinctble filename
     # print the cut value, cut efficiency and significance for the optimized cut
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Optimize cut value.')
-    parser.add_argument('cut', nargs='?', default='ECAL_E_total[0]', help='Cut variable to optimize (default: %(default)s)')
-    parser.add_argument('--pre-selection', default='TagTrk2_track_No == 1 && RecTrk2_track_No == 1', help='Pre-selection to apply (default: %(default)s)')
-    parser.add_argument('--signal-dir', default='eot/signal/invisible/mAp_100/dp_ana', help='Directory containing signal ROOT files (default: %(default)s)')
-    parser.add_argument('--background-dir', default='eot/background/inclusive/dp_ana', help='Directory containing background ROOT files (default: %(default)s)')
+    parser.add_argument('cut', nargs='?', default='ECAL_E_total[0]', help='Cut variable to optimize')
+    parser.add_argument('--pre-selection', default='TagTrk2_track_No == 1 && RecTrk2_track_No == 1', help='Pre-selection to apply')
+    parser.add_argument('--signal-dir', default='eot/signal/invisible/mAp_100/dp_ana', help='Directory containing signal ROOT files')
+    parser.add_argument('--background-dir', default='eot/background/inclusive/dp_ana', help='Directory containing background ROOT files')
     args = parser.parse_args()
 
     optimize_cut(args.cut, args.pre_selection, args.signal_dir, args.background_dir)
 
-</code_interpreter>
+```
+
+</code_interface>
 
 #### Examples End
 
 ## Task:
 
-- You are a independent, patient, careful and accurate assistant, utilizing tools to help user. You analysis the chat history, decide and determine wether to use tool, or simply response to user. You can call tools by using xml node. Available Tools: Code Interpreter, Web Search, or Knowledge Search.
+- You are a independent, patient, careful and accurate assistant, utilizing tools to help user. You analysis the chat history, decide and determine wether to use tool, or simply response to user. You can call tools by using xml node. Available Tools: Code Interface, Web Search, or Knowledge Search.
 
 ## Guidelines:
 
@@ -427,12 +399,6 @@ if __name__ == "__main__":
 - If there are anything unclear, unexpected, or require validation, make it clear by iteratively use tool, until everything is clear with it's own reference (from tool). **DO NOT make ANY assumptions, DO NOT make-up any reply, DO NOT turn to user for information**.
 - Always aim to deliver meaningful insights, iterating if necessary.
 - All responses should be communicated in the chat's primary language, ensuring seamless understanding. If the chat is multilingual, default to English for clarity.
-- DO NOT put any tool inside or outside markdown code block. That means you can output:
-<tool ...>...</tool>
-But never output something like:
-```xml
-<tool ...>...</tool>
-```
 
 """
         self.VISION_MODEL_PROMPT: str = """Please briefly explain and analyze this figure. If it's a histogram, also tell if the histogram binning and plotting range is suitable for the dataset."""
@@ -480,15 +446,15 @@ But never output something like:
 
     def pipes(self):
         self.max_loop = self.valves.MAX_LOOP  # Save moneya
-        if self.valves.USE_CODE_INTERPRETER:
-            self.TOOL["code_interpreter"] = self._code_interpreter
-            self.prompt_templates["code_interpreter"] = self.CODE_INTERPRETER_PROMPT
+        if self.valves.USE_CODE_INTERFACE:
+            self.TOOL["code_interface"] = self._code_interface
+            self.prompt_templates["code_interface"] = self.CODE_INTERFACE_PROMPT
             self.init_code_worker()
         else:
-            if "code_interpreter" in self.TOOL.keys():
-                self.TOOL.pop("code_interpreter")
-            if "code_interpreter" in self.prompt_templates.keys():
-                self.prompt_templates.pop("code_interpreter")
+            if "code_interface" in self.TOOL.keys():
+                self.TOOL.pop("code_interface")
+            if "code_interface" in self.prompt_templates.keys():
+                self.prompt_templates.pop("code_interface")
         if self.valves.USE_WEB_SEARCH:
             self.TOOL["web_search"] = self._web_search
             self.prompt_templates["web_search"] = self.WEB_SEARCH_PROMPT
@@ -576,8 +542,7 @@ But never output something like:
                         vision_summary = await self._query_vision_model(
                             self.VISION_MODEL_PROMPT, image_urls
                         )
-                        content += vision_summary
-                        messages[-1]["content"] = content
+                        messages[-1]["content"] += vision_summary
 
             # 确保user message是text-only
             log.debug("Checking all user messages content format")
@@ -603,6 +568,9 @@ But never output something like:
             while i < len(messages):
                 msg = messages[i]
                 if msg["role"] == "assistant":
+                    # 删除所有running提示
+                    msg["content"].replace('\n<details type="info">\n<summary>Running</summary>\n</details>\n','')
+
                     # 用正则匹配所有<details type="user_proxy">内容
                     user_proxy_nodes = re.findall(
                         r'<details type="user_proxy">(.*?)</details>',
@@ -711,11 +679,11 @@ But never output something like:
                             if not self.immediate_stop:
                                 res, tag_name = self._filter_response_tag()
                                 yield res
-                                # Clean up
-                                if self.temp_content:
-                                    await asyncio.sleep(0.1)
-                                    yield self.temp_content
-                                    self.temp_content = ""
+                            # Clean up
+                            if self.temp_content:
+                                await asyncio.sleep(0.1)
+                                yield self.temp_content
+                                self.temp_content = ""
                             self.immediate_stop = False
                             self.current_tag_name = None
                             self.total_response = self.total_response.lstrip("\n")
@@ -743,6 +711,7 @@ But never output something like:
                             # Call tools
                             # =================================================
                             if tools is not None:
+                                yield f'\n<details type="info">\n<summary>Running</summary>\n</details>\n'
                                 do_pull = True
                                 user_proxy_reply = ""
                                 for tool in tools:
@@ -759,6 +728,8 @@ But never output something like:
                                         figure_summary = await self._query_vision_model(self.VISION_MODEL_PROMPT, image_urls)
                                         content += figure_summary
 
+                                    content += "\n\nContinue or stop?"
+
                                     user_proxy_reply += f"{summary}\n\n{content}\n\n"
                                     yield f'\n<details type="user_proxy">\n<summary>{summary}</summary>\n{content}\n</details>\n'
 
@@ -768,6 +739,7 @@ But never output something like:
                                         "content": user_proxy_reply,
                                     }
                                 )
+
                             else:
                                 do_pull = False
                             break
@@ -805,7 +777,7 @@ But never output something like:
                                 # if tag_name == "knowledge_search":
                                 #    self.immediate_stop = True
                                 # if tag_name in ["web_search","knowledge_search"]:
-                                if "</code_interpreter>" in self.total_response:
+                                if "</code_interface>" in self.total_response:
                                     self.immediate_stop = True
                                 if tag_name:
                                     self.current_tag_name = tag_name
@@ -863,7 +835,7 @@ But never output something like:
         self.temp_content += content
         res = ""
         if "<" in self.temp_content:
-            # Conver tool calling tags into content (Except code_interpreter, let openwebui to handle)
+            # Conver tool calling tags into content (Except code_interface, let openwebui to handle)
             if len(self.temp_content) > 20:
                 if (
                     "<web_search" in self.temp_content
@@ -1188,7 +1160,7 @@ But never output something like:
         tools = []
         # Define the regex pattern to match the XML tags
         pattern = re.compile(
-            r"<(code_interpreter|web_search|knowledge_search)\s*([^>]*)>(.*?)</\1>",
+            r"<(code_interface|web_search|knowledge_search)\s*([^>]*)>(.*?)</\1>",
             re.DOTALL | re.MULTILINE,
         )
 
@@ -1246,7 +1218,7 @@ But never output something like:
         #log.debug(result)
 
     # =========================================================================
-    # Code Interpreter
+    # Code Interface
     # =========================================================================
     def init_code_worker(self):
         try:
@@ -1260,16 +1232,24 @@ But never output something like:
         except Exception as e:
             log.error(f"Error initializing code worker: {e}")
 
-    async def _code_interpreter(
+    async def _code_interface(
         self, attributes: dict, content: str
     ) -> Tuple[str, str]:
         if self.code_worker is None:
             self.init_code_worker()
 
-        # Extract the code interpreter type and language
+        # Extract the code interface type and language
         code_type = attributes.get("type", "")
         lang = attributes.get("lang", "")
         filename = attributes.get("filename", "")
+
+        # Remove the first line and the last line (markdown code block)
+        lines = content.strip().splitlines()
+        if len(lines) <= 2:
+            return "Error: Too few lines to extract code" "Check if you have code in markdown code block"
+        lines = lines[1:-1]
+        content = "\n".join(lines)
+
         if code_type == "exec":
             # Execute the code
             if filename:
@@ -1329,7 +1309,7 @@ But never output something like:
             else:
                 return "Invalid search and replace format", "Format: <<<<<<< ORIGINAL\nOriginal code\n=======\nUpdated code\n>>>>>>> UPDATED"
         else:
-            return f"Invalid code interpreter type `{code_type}`", "Available types: `exec`, `write`"
+            return f"Invalid code interface type `{code_type}`", "Available types: `exec`, `write`"
 
     # =========================================================================
     # Vision Language Model
@@ -1456,7 +1436,7 @@ But never output something like:
         for url in image_urls:
             if not url.startswith("data:image"):
                 log.debug(f"Processing image {i}: {url}")
-            fig_name = f"Figure {i}:"
+            fig_name = f"**Figure {i}:**"
             vl_res = await self._generate_vl_response(
                 prompt=prompt,
                 image_url=url,
@@ -1464,6 +1444,6 @@ But never output something like:
                 url=self.valves.DEEPSEEK_API_BASE_URL,
                 key=self.valves.DEEPSEEK_API_KEY
             )
-            response += f"\n\n{fig_name}\n\n{vl_res}"
+            response += f"\n\n{fig_name} {vl_res}"
         return response
 
