@@ -94,7 +94,7 @@ You have access to a user's {{OP_SYSTEM}} computer workspace, use `<code_interfa
 <code_interface type="exec" lang="python" filename="">
 
 ```python
-# complete and production-ready code here
+# Always write complete code here. DO NOT skip any code, otherwise will not work.
 ```
 
 </code_interface>
@@ -238,7 +238,7 @@ Typical signature of the signal of invisible decay is a single track in the Tagg
 
 Bremstruhlung events results in missing momentum, but small missing energy in the ECAL.
 
-Usually SM electron-nuclear or photon-nuclear process will create multiple tracks in the recoil tracker, thus not mis identified as signal, but still are a ratio of events passing the track number selection, and with MIP particles in the final states, becoming background. They can be veto by the HCAL with a HCAL Max Cell Energy cut (signal region defined by HCAL Max Cell energy lower than some value).
+Usually SM electron-nuclear or photon-nuclear process will create multiple tracks in the recoil tracker, thus not mis identified as signal, but still are a ratio of events passing the track number selection, and with MIP particles in the final states, becoming background. They can be veto by the HCAL with a HCAL Max Cell Energy cut (signal region defined by HCAL Max Cell energy lower than some value e.g. 1 MeV).
 
 Process with neutrino will be irreducible background, however with ignorable branching ratio.
 
@@ -697,11 +697,11 @@ if __name__ == "__main__":
                             if not self.immediate_stop:
                                 res, tag_name = self._filter_response_tag()
                                 yield res
-                            # Clean up
-                            if self.temp_content:
-                                await asyncio.sleep(0.1)
-                                yield self.temp_content
-                                self.temp_content = ""
+                                # Clean up
+                                if self.temp_content:
+                                    await asyncio.sleep(0.1)
+                                    yield self.temp_content
+                                    self.temp_content = ""
                             self.immediate_stop = False
                             self.current_tag_name = None
                             self.total_response = self.total_response.lstrip("\n")
@@ -718,7 +718,7 @@ if __name__ == "__main__":
                             # Call tools
                             # =================================================
                             if tools is not None:
-                                yield f'\n<details type="status">\n<summary>Running...</summary>\nRunning\n</details>\n'
+                                yield f'\n\n<details type="status">\n<summary>Running...</summary>\nRunning\n</details>\n'
                                 do_pull = True
                                 user_proxy_reply = ""
                                 for tool in tools:
@@ -786,6 +786,14 @@ if __name__ == "__main__":
                                 # if tag_name in ["web_search","knowledge_search"]:
                                 if "</code_interface>" in self.total_response:
                                     self.immediate_stop = True
+                                    res += self.temp_content
+                                    self.temp_content = ""
+                                    extra = res.rfind('>')
+                                    if extra != -1:
+                                        res = res[:extra +1]
+                                    extra = self.total_response.rfind('>')
+                                    self.total_response = self.total_response[:extra + 1]
+
                                 if tag_name:
                                     self.current_tag_name = tag_name
                                 if tag_name is None and self.current_tag_name:
@@ -846,12 +854,12 @@ if __name__ == "__main__":
             # Conver tool calling tags into content (Except code_interface, let openwebui to handle)
             if len(self.temp_content) > 20:
                 if (
-                    "<web_search" in self.temp_content
-                    or "<knowledge_search" in self.temp_content
+                    "<web_search " in self.temp_content
+                    or "<knowledge_search " in self.temp_content
                 ):
-                    log.debug("detect <web_serach or <knowledge_search")
+                    log.debug("detect <web_serach  or <knowledge_search ")
                     pattern = re.compile(
-                        r"^<(web_search|knowledge_search)\s*([^>]*)>(.*?)</\1>",
+                        r"^<(web_search|knowledge_search)\s+([^>]+)>(.*?)</\1>",
                         re.DOTALL | re.MULTILINE,
                     )
                     # Find all matches in the self.temp_content
@@ -1171,7 +1179,7 @@ if __name__ == "__main__":
         tools = []
         # Define the regex pattern to match the XML tags
         pattern = re.compile(
-            r"<(code_interface|web_search|knowledge_search)\s*([^>]*)>(.*?)</\1>",
+            r"<(code_interface|web_search|knowledge_search)\s+([^>]+)>(.*?)</\1>",
             re.DOTALL | re.MULTILINE,
         )
 
@@ -1470,5 +1478,6 @@ if __name__ == "__main__":
                 key=self.valves.DEEPSEEK_API_KEY,
             )
             response += f"\n\n{fig_name} {vl_res}"
+            i += 1
         return response
 
