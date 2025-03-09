@@ -4,7 +4,7 @@ Maybe can do simple high energy physics analysis
 
 ![image-20250309162426011](assets/image-20250309162426011.png)
 
-Video: [link](https://ihepbox.ihep.ac.cn/ihepbox/index.php/s/eyyWEdY0BTLp6UH)
+Video of DarkSHINE cutflow analysis: [link](https://ihepbox.ihep.ac.cn/ihepbox/index.php/s/eyyWEdY0BTLp6UH)
 
 `welt.py` is a [pipe function](https://docs.openwebui.com/features/plugin/functions/pipe/) of open-webui
 
