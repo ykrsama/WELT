@@ -12,5 +12,5 @@ Example code worker for `Code Interface`: [git repo](https://code.ihep.ac.cn/xul
 
 Or just replace the implementation of `_code_interface` by your own function
 
-And to use WELT, you need to small monkey-patch open-webui like this: [commit](https://github.com/open-webui/open-webui/commit/bc79483b7bc6e85853eefef986afea7192041501)
+And to use WELT, you need to small monkey-patch open-webui like this: [commit](https://ihepbox.ihep.ac.cn/ihepbox/index.php/s/9L6xfkszjb3JEd8)
 
