@@ -322,7 +322,10 @@ Assistant: <code_interface type="exec" lang="python" filename="compare_kinematic
 
 ```python
 import ROOT
+import numpy
+import matplotlib.pyplot as plt
 import argparse
+from pathlib import Path
 ...
 
 def compare(column: str, fig_name: str):
@@ -363,6 +366,8 @@ if __name__ == "__main__":
 #### Guidelines
 
 - If exists multiple signal regions, signal regions should be orthogonal to each other
+- To scan S/sqrt(S+B), please use histogram integral in the loop, which is fast. DO NOT use GetEntries(cut) in a loop, which is extremly slow.
+- Plot using matplotlib, not TGraph.
 
 #### Examples Begin
 
@@ -371,26 +376,44 @@ Assistant: <code_interface type="exec" lang="python" filename="optimize_cut.py">
 
 ```python
 import ROOT
+import numpy
+import matplotlib.pyplot as plt
 import argparse
 ...
 
-def optimize_cut(column: str, pre_selection: str, signal_dir: str, background_dir: str):
-    # load files
-    # draw histogram with pre_selection and column name with autmoatic range
-    # draw cumulative histograms of the cut varaible, save to png with distinctable filename
-    # calculate `S/sqrt(S+B)` for each cut value
-    # draw S/sqrt(S+B) vs cut value, save to png with distinctble filename
-    # print the cut value, cut efficiency and significance for the optimized cut
+def optimize_cut():
+    # Load files
+    ...
+
+    hist_sig = ROOT.TH1F("hist_sig", "", nbins, xmin, xmax)
+    hist_bkg = ROOT.TH1F("hist_bkg", "", nbins, xmin, xmax)
+
+    chain_sig.Draw(f"{cut_var} >> hist_sig", pre_cut)
+    chain_bkg.Draw(f"{cut_var} >> hist_bkg", pre_cut)
+
+    # Integral to a direction
+    for i in range(nbins, 0, -1):
+        cut_val =  hist_sig.GetBinLowEdge(i)
+        s = hist_sig.Integral(i, nbins)
+        b = hist_bkg.Integral(i, nbins)
+        # Calculate `S/sqrt(S+B)` for each cut_val
+        ...
+
+    # Print the cut value, cut efficiency and significance for the optimized cut
+    ...
+
+    # Plot S/sqrt(S+B) vs cut value and the maximum, with clear syle, save to png with distinctble filename
+    ...
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Optimize cut value.')
-    parser.add_argument('column', nargs='?', default='ECAL_E_total[0]', help='Cut variable to optimize')
-    parser.add_argument('--pre-selection', default='TagTrk2_track_No == 1 && RecTrk2_track_No == 1', help='Pre-selection to apply')
+    parser.add_argument('cut-var', nargs='?', default='ECAL_E_total[0]', help='Cut variable to optimize')
+    parser.add_argument('--pre-cut', default='...', help='Cuts applied befor current cut var')
     parser.add_argument('--signal-dir', default='eot/signal/invisible/mAp_100/dp_ana', help='Directory containing signal ROOT files')
     parser.add_argument('--background-dir', default='eot/background/inclusive/dp_ana', help='Directory containing background ROOT files')
     args = parser.parse_args()
-
-    optimize_cut(args.cut, args.pre_selection, args.signal_dir, args.background_dir)
+    
+    # Optimize cut
 
 ```
 
@@ -412,7 +435,7 @@ if __name__ == "__main__":
 
 """
         self.VISION_MODEL_PROMPT: str = (
-            """Please briefly explain and analyze this figure. If it's a histogram, also tell if the histogram binning and plotting range is suitable for the dataset."""
+            """Please briefly explain this figure."""
         )
 
         self.TOOL = {}
@@ -661,7 +684,7 @@ if __name__ == "__main__":
                     f"{self.valves.DEEPSEEK_API_BASE_URL}/chat/completions",
                     json=payload,
                     headers=headers,
-                    timeout=300,
+                    timeout=None,
                 ) as response:
                     # 错误处理
                     if response.status_code != 200:
@@ -850,7 +873,6 @@ if __name__ == "__main__":
         self.temp_content += content
         res = ""
         if "<" in self.temp_content:
-            log.debug("detect <")
             # Conver tool calling tags into content (Except code_interface, let openwebui to handle)
             if len(self.temp_content) > 20:
                 if (
@@ -1280,7 +1302,7 @@ if __name__ == "__main__":
                         content=content,
                         execute=True,
                         lang=lang,
-                        timeout=300,
+                        timeout=-1,
                     )
                     return f"Executed code: {filename}", result
                 except Exception as e:
@@ -1464,20 +1486,34 @@ if __name__ == "__main__":
         prompt: str,
         image_urls: List[str],
     ) -> str:
-        response = ""
-        i = 1
-        for url in image_urls:
+        # Batch logging directory-style URLs first
+        for idx, url in enumerate(image_urls, 1):
             if not url.startswith("data:image"):
-                log.debug(f"Processing image {i}: {url}")
-            fig_name = f"**Figure {i}:**"
-            vl_res = await self._generate_vl_response(
-                prompt=prompt,
-                image_url=url,
-                model="Qwen/Qwen2-VL-72B-Instruct",
-                url=self.valves.DEEPSEEK_API_BASE_URL,
-                key=self.valves.DEEPSEEK_API_KEY,
-            )
-            response += f"\n\n{fig_name} {vl_res}"
-            i += 1
-        return response
+                log.debug(f"Processing image {idx}: {url}")
+    
+        # Configure execution parameters
+        BATCH_SIZE = 5  # Controlled concurrency for large image batches
+        results = []
+        
+        # Process in parallel batches
+        for i in range(0, len(image_urls), BATCH_SIZE):
+            batch_urls = image_urls[i:i+BATCH_SIZE]
+            tasks = [
+                self._generate_vl_response(
+                    prompt=prompt,
+                    image_url=url,
+                    model="Qwen/Qwen2-VL-72B-Instruct",
+                    url=self.valves.DEEPSEEK_API_BASE_URL,
+                    key=self.valves.DEEPSEEK_API_KEY,
+                )
+                for url in batch_urls
+            ]
+            batch_results = await asyncio.gather(*tasks)
+            results.extend(batch_results)
+    
+        # Format ordered response
+        return "\n\n".join(
+            f"**Figure {idx}:** {res}" 
+            for idx, res in enumerate(results, 1)
+        )
 

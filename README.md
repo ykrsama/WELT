@@ -1,7 +1,8 @@
 # WELT: Workflow-adaptivE LLM with Target-oriented system
 
-For specific task, specific but optimized workflow generally performs better than a generalized workflow.
+Let model to decide workflow.
 
-Can we train some example workflows into a single model and:
-- Let model to decide whicih specific workflow to use
-- Emerge it's own workflow during RL
+WELT is a [open-webui pipe function](https://docs.openwebui.com/features/plugin/functions/pipe/)
+
+But to use WELT, you need to monkey-patch open-webui like this: [commit](https://github.com/open-webui/open-webui/commit/bc79483b7bc6e85853eefef986afea7192041501)
+
