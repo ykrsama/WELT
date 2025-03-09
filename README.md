@@ -1,6 +1,6 @@
 # WELT: Workflow-adaptivE LLM with Target-oriented system
 
-Let model to decide workflow.
+Maybe can do simple high energy physics analysis
 
 ![image-20250309162426011](assets/image-20250309162426011.png)
 
