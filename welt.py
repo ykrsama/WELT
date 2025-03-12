@@ -56,15 +56,19 @@ class ResultObject:
 class Pipe:
     class Valves(BaseModel):
         DEEPSEEK_API_BASE_URL: str = Field(
-            default="https://api.deepseek.com/v1",
-            description="DeepSeek API的基础请求地址",
+            default="https://api.siliconflow.cn/v1",
+            description="语言模型API的基础请求地址",
         )
         DEEPSEEK_API_KEY: str = Field(
-            default="", description="用于身份验证的DeepSeek API密钥，可从控制台获取"
+            default="", description="用于身份验证的API密钥"
         )
         DEEPSEEK_API_MODEL: str = Field(
-            default="deepseek-reasoner",
-            description="API请求的模型名称，默认为 deepseek-reasoner ",
+            default="Pro/deepseek-ai/DeepSeek-R1",
+            description="API请求的模型名称",
+        )
+        PROXY: str = Field(
+            default="",
+            description="代理(http://ip:port)",
         )
         USE_CODE_INTERFACE: bool = Field(default=True)
         USE_WEB_SEARCH: bool = Field(default=True)
@@ -82,11 +86,7 @@ class Pipe:
         self.valves = self.Valves()
         self.data_prefix = "data:"
         self.max_loop = self.valves.MAX_LOOP  # Save moneya
-        self.client = httpx.AsyncClient(
-            http2=True,
-            proxy="http://127.0.0.1:7890",
-            timeout=None,
-        )
+        self.client = None
         self.CODE_INTERFACE_PROMPT: str = """Code Interface
 
 You have access to a user's {{OP_SYSTEM}} computer workspace, use `<code_interface>` XML tag to write codes to do analysis, calculations, or problem-solving. Here's how it works:
@@ -507,10 +507,16 @@ if __name__ == "__main__":
             if "knowledge_search" in self.prompt_templates.keys():
                 self.prompt_templates.pop("knowledge_search")
 
+        self.client = httpx.AsyncClient(
+            http2=True,
+            proxy=self.valves.PROXY if self.valves.PROXY else None,
+            timeout=None,
+        )
+
         return [
             {
-                "id": self.valves.DEEPSEEK_API_MODEL,
-                "name": self.valves.DEEPSEEK_API_MODEL,
+                "id": "Welt",
+                "name": "Welt",
             }
         ]
 
@@ -533,8 +539,7 @@ if __name__ == "__main__":
 
         try:
             # 模型ID提取
-            model_id = body["model"].split(".", 1)[-1]
-            payload = {**body, "model": model_id}
+            payload = {**body, "model": self.valves.DEEPSEEK_API_MODEL}
 
             messages = payload["messages"]
 
