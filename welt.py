@@ -74,8 +74,8 @@ class Pipe:
         USE_MAPPING: bool = Field(default=True)
         USE_WEB_SEARCH: bool = Field(default=True)
         USE_KNOWLEDGE_SEARCH: bool = Field(default=True)
-        ADD_DARKSHINE_GUIDE: bool = Field(default=True, title="Add DarkSHINE Guide")
-        ADD_BESIII_GUIDE: bool = Field(default=True, title="Add BESIII Guide")
+        USE_DARKSHINE_GUIDE: bool = Field(default=True, title="Use DarkSHINE Guide")
+        USE_BESIII_GUIDE: bool = Field(default=True, title="Use BESIII Guide")
         GOOGLE_PSE_API_KEY: str = Field(default="", title="Google PSE API Key")
         GOOGLE_PSE_ENGINE_ID: str = Field(default="", title="Google PSE Engine ID")
         EMBEDDING_BATCH_SIZE: int = Field(
