@@ -68,7 +68,7 @@ class Pipe:
         )
         PROXY: str = Field(
             default="",
-            description="代理(http://ip:port)",
+            description="代理地址(http://<ip>:<port>)",
         )
         USE_CODE_INTERFACE: bool = Field(default=True)
         USE_WEB_SEARCH: bool = Field(default=True)
