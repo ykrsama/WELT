@@ -73,15 +73,15 @@ class Pipe:
         USE_CODE_INTERFACE: bool = Field(default=True)
         USE_MAPPING: bool = Field(default=True)
         USE_WEB_SEARCH: bool = Field(default=True)
+        USE_KNOWLEDGE_SEARCH: bool = Field(default=True)
+        ADD_DARKSHINE_GUIDE: bool = Field(default=True, title="Add DarkSHINE Guide")
+        ADD_BESIII_GUIDE: bool = Field(default=True, title="Add BESIII Guide")
         GOOGLE_PSE_API_KEY: str = Field(default="", title="Google PSE API Key")
         GOOGLE_PSE_ENGINE_ID: str = Field(default="", title="Google PSE Engine ID")
-        USE_KNOWLEDGE_SEARCH: bool = Field(default=True)
         EMBEDDING_BATCH_SIZE: int = Field(
             default=2000,
             description="Batch size for knowledge search",
         )
-        ADD_DARKSHINE_GUIDE: bool = Field(default=True, title="Add DarkSHINE Guide")
-        ADD_BESIII_GUIDE: bool = Field(default=True, title="Add BESIII Guide")
         MAX_LOOP: int = Field(default=20, description="Prevent dead loop")
 
     def __init__(self):
