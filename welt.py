@@ -71,14 +71,17 @@ class Pipe:
             description="代理地址(http://<ip>:<port>)",
         )
         USE_CODE_INTERFACE: bool = Field(default=True)
+        USE_MAPPING: bool = Field(default=True)
         USE_WEB_SEARCH: bool = Field(default=True)
+        GOOGLE_PSE_API_KEY: str = Field(default="", title="Google PSE API Key")
+        GOOGLE_PSE_ENGINE_ID: str = Field(default="", title="Google PSE Engine ID")
         USE_KNOWLEDGE_SEARCH: bool = Field(default=True)
         EMBEDDING_BATCH_SIZE: int = Field(
             default=2000,
             description="Batch size for knowledge search",
         )
-        GOOGLE_PSE_API_KEY: str = Field(default="")
-        GOOGLE_PSE_ENGINE_ID: str = Field(default="")
+        ADD_DARKSHINE_GUIDE: bool = Field(default=True, title="Add DarkSHINE Guide")
+        ADD_BESIII_GUIDE: bool = Field(default=True, title="Add BESIII Guide")
         MAX_LOOP: int = Field(default=20, description="Prevent dead loop")
 
     def __init__(self):
@@ -217,8 +220,29 @@ make
 
 - In each `<knowledge_search>` XML tag, be concise and focused on composing high-quality search query, **avoiding unnecessary elaboration, commentary, or assumptions**.
 - Enclose only one query in one pair of `<knowledge_search collection="...">` `</knowledge_search>` XML tags.
+
 """
-        self.GUIDE_PROMPT: str = """## DarkSHINE Physics Analysis Guide:
+
+        self.MAPPING_PROMPT: str = """Mapping
+Use mapping function to control MC simulation and reconstruction program, and histogram plotting:
+<mapping type="joboption" template="", outname="", outpath="">
+</mapping>
+
+#### Tool Attributes
+- `type`: Available options:
+    - `joboption`:
+    - `algorithm`:
+- `template`: The template file path.
+
+
+#### Usage Instructions
+
+#### Examples Begin
+#### Examples End
+
+"""
+
+        self.DARKSHINE_PROMT: str = """## DarkSHINE Physics Analysis Guide:
 
 ### Introduction
 
@@ -421,7 +445,12 @@ if __name__ == "__main__":
 
 #### Examples End
 
-## Task:
+"""
+    
+        self.BESIII_PROMPT = """## BESIII Physics Analysis Guide:
+"""
+
+        self.GUIDE_PROMPT: str = """## Task:
 
 - You are a independent, patient, careful and accurate assistant, utilizing tools to help user. You analysis the chat history, decide and determine wether to use tool, or simply response to user. You can call tools by using xml node. Available Tools: Code Interface, Web Search, or Knowledge Search.
 
@@ -1244,6 +1273,10 @@ if __name__ == "__main__":
         template_string = """## Available Tools\n"""
         for i, (name, prompt) in enumerate(self.prompt_templates.items()):
             template_string += f"\n### {i+1}. {prompt}\n"
+        if self.valves.ADD_DARKSHINE_GUIDE:
+            template_string += self.DARKSHINE_PROMT
+        if self.valves.ADD_BESIII_GUIDE:
+            template_string += self.BESIII_PROMPT
         template_string += self.GUIDE_PROMPT
         # Create a Jinja2 Template object
         template = Template(template_string)
