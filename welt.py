@@ -1273,9 +1273,9 @@ if __name__ == "__main__":
         template_string = """## Available Tools\n"""
         for i, (name, prompt) in enumerate(self.prompt_templates.items()):
             template_string += f"\n### {i+1}. {prompt}\n"
-        if self.valves.ADD_DARKSHINE_GUIDE:
+        if self.valves.USE_DARKSHINE_GUIDE:
             template_string += self.DARKSHINE_PROMT
-        if self.valves.ADD_BESIII_GUIDE:
+        if self.valves.USE_BESIII_GUIDE:
             template_string += self.BESIII_PROMPT
         template_string += self.GUIDE_PROMPT
         # Create a Jinja2 Template object
